@@ -62,32 +62,60 @@ export async function exigir(ctx: Ctx, s: Sessao, codigo: string): Promise<Escop
 
 /** Visibilidade do card. DECISÃO PENDENTE: aqui o ADMIN enxerga tudo, inclusive PESSOAS_ESPECIFICAS.
  *  Para dados de saúde ocupacional (LGPD), considere tirar esse atalho. */
-export async function podeVerCard(ctx: Ctx, s: Sessao, card: Doc<"cards">): Promise<boolean> {
+
+/** Verifica a visibilidade do card dentro da organização. */
+export async function podeVerCard(
+  ctx: Ctx,
+  s: Sessao,
+  card: Doc<"cards">
+): Promise<boolean> {
   if (card.organizacao_id !== s.usuario.organizacao_id) return false;
+
+  // Administradores mantêm o acesso definido pela regra atual do sistema.
   if (s.perfil.codigo === "ADMIN") return true;
+
   const uid = s.usuario._id;
-  if (card.criado_por_id === uid || card.responsavel_conclusao_id === uid) return true;
 
-  const comps = await ctx.db.query("compartilhamentos").withIndex("by_card", (q) => q.eq("card_id", card._id)).collect();
-  if (comps.some((c) => c.tipo_destino === "USUARIO" && c.usuario_id === uid)) return true;
-
+  // Cards de pessoas específicas só são visíveis para pessoas autorizadas.
   if (card.visibilidade === "PESSOAS_ESPECIFICAS") {
-    const acoes = await ctx.db.query("acoes").withIndex("by_card", (q) => q.eq("card_id", card._id)).collect();
+    if (
+      card.criado_por_id === uid ||
+      card.responsavel_conclusao_id === uid
+    ) {
+      return true;
+    }
+
+    const comps = await ctx.db
+      .query("compartilhamentos")
+      .withIndex("by_card", (q) => q.eq("card_id", card._id))
+      .collect();
+
+    if (
+      comps.some(
+        (c) => c.tipo_destino === "USUARIO" && c.usuario_id === uid
+      )
+    ) {
+      return true;
+    }
+
+    const acoes = await ctx.db
+      .query("acoes")
+      .withIndex("by_card", (q) => q.eq("card_id", card._id))
+      .collect();
+
     return acoes.some((a) => a.responsavel_id === uid);
   }
-  if (card.quadro_id === s.quadro_id) return true;
-  return comps.some((c) => c.tipo_destino === "QUADRO" && c.quadro_id === s.quadro_id);
-}
 
-/** Edição: respeita o escopo da permissão (TODOS / QUADRO / PROPRIO) e o nível EDICAO de compartilhamento. */
-export async function podeEditarCard(ctx: Ctx, s: Sessao, card: Doc<"cards">): Promise<boolean> {
-  if (!(await podeVerCard(ctx, s, card))) return false;
-  const escopo = await escopoDe(ctx, s.perfil._id, "CARD_EDITAR");
-  if (!escopo) return false;
-  if (escopo === "TODOS") return true;
-  if (escopo === "QUADRO" && card.quadro_id === s.quadro_id) return true;
-  const uid = s.usuario._id;
-  if (card.criado_por_id === uid || card.responsavel_conclusao_id === uid) return true;
-  const comps = await ctx.db.query("compartilhamentos").withIndex("by_card", (q) => q.eq("card_id", card._id)).collect();
-  return comps.some((c) => c.tipo_destino === "USUARIO" && c.usuario_id === uid && c.nivel_acesso === "EDICAO");
+  // Cards da equipe inteira ficam disponíveis no quadro de origem atual.
+  if (card.quadro_id === s.quadro_id) return true;
+
+  // Um card de equipe inteira também pode ser compartilhado com outro quadro.
+  const comps = await ctx.db
+    .query("compartilhamentos")
+    .withIndex("by_card", (q) => q.eq("card_id", card._id))
+    .collect();
+
+  return comps.some(
+    (c) => c.tipo_destino === "QUADRO" && c.quadro_id === s.quadro_id
+  );
 }
