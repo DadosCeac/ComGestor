@@ -11,8 +11,8 @@
       throw new Error("Sessão não autenticada.");
     }
 
-    const token = await window.Clerk.session.getToken({ template: "convex" });
-    if (!token) throw new Error("Token JWT do template convex não encontrado no Clerk.");
+    const token = await window.Clerk.session.getToken();
+    if (!token) throw new Error("Não foi possível obter o token de sessão do Clerk.");
     return token;
   }
 
@@ -35,7 +35,11 @@
     }
 
     if (!result || !response.ok || result.status !== "success") {
-      throw new Error(result?.errorMessage || `Falha na chamada Convex (HTTP ${response.status}).`);
+      const message = result?.errorMessage || `Falha na chamada Convex (HTTP ${response.status}).`;
+      if (/not authenticated|unauthenticated|invalid.*token|token.*invalid/i.test(message)) {
+        throw new Error("O Convex recusou o token de sessão do Clerk. Confira a integração Convex e os claims do token de sessão.");
+      }
+      throw new Error(message);
     }
     return result.value;
   }
