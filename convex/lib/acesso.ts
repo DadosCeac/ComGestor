@@ -119,3 +119,43 @@ export async function podeVerCard(
     (c) => c.tipo_destino === "QUADRO" && c.quadro_id === s.quadro_id
   );
 }
+
+/** Edição: respeita o escopo da permissão e o nível de acesso compartilhado. */
+export async function podeEditarCard(
+  ctx: Ctx,
+  s: Sessao,
+  card: Doc<"cards">
+): Promise<boolean> {
+  if (!(await podeVerCard(ctx, s, card))) return false;
+
+  const escopo = await escopoDe(ctx, s.perfil._id, "CARD_EDITAR");
+  if (!escopo) return false;
+
+  if (escopo === "TODOS") return true;
+
+  if (escopo === "QUADRO" && card.quadro_id === s.quadro_id) {
+    return true;
+  }
+
+  const uid = s.usuario._id;
+
+  if (
+    card.criado_por_id === uid ||
+    card.responsavel_conclusao_id === uid
+  ) {
+    return true;
+  }
+
+  const compartilhamentos = await ctx.db
+    .query("compartilhamentos")
+    .withIndex("by_card", (q) => q.eq("card_id", card._id))
+    .collect();
+
+  return compartilhamentos.some(
+    (c) =>
+      c.tipo_destino === "USUARIO" &&
+      c.usuario_id === uid &&
+      c.nivel_acesso === "EDICAO"
+  );
+}
+
