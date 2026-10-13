@@ -193,6 +193,12 @@ window.location.href = "/ComGestor/index.html";
     const mensagem = error instanceof Error ? error.message : "";
     if (/sem acesso|não autorizado/i.test(mensagem)) {
       showError("Sua conta não está autorizada no ComGestor. Solicite acesso ao administrador.");
+    } else if (/template.*convex|jwt template|token jwt.*não encontrado/i.test(mensagem)) {
+      showError("A integração Convex não está configurada no Clerk. Ative a integração Convex ou configure o template JWT chamado “convex” e tente novamente.");
+    } else if (/e-mail não verificado|email.*not verified|email_verified/i.test(mensagem)) {
+      showError("O Clerk não confirmou o e-mail desta conta. Verifique o endereço de e-mail e o claim email_verified no template JWT “convex”.");
+    } else if (/não autenticado|not authenticated|invalid.*token|token.*invalid|issuer|audience/i.test(mensagem)) {
+      showError("O Convex não reconheceu a sessão do Clerk. Confira se a integração Convex está ativa, se o template JWT se chama “convex” e se o issuer corresponde ao Clerk configurado no backend.");
     } else if (/could not find public function|function.*not found/i.test(mensagem)) {
       showError("O serviço de acesso ainda não foi publicado no Convex. Solicite ao administrador a publicação do backend e tente novamente.");
     } else {
