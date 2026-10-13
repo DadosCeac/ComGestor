@@ -685,6 +685,46 @@ export const seedData = {
    "area": "AREA_014",
    "perfil": "PERFIL_001",
    "ativo": true
+  },
+  {
+   "organizacao": "ORG_001",
+   "email": "ellen.fgomes@hc.fm.usp.br",
+   "nome": "Ellen Gomes",
+   "area": "AREA_014",
+   "perfil": "PERFIL_001",
+   "ativo": true
+  },
+  {
+   "organizacao": "ORG_001",
+   "email": "fernando.maia@hc.fm.usp.br",
+   "nome": "Fernando Maia",
+   "area": "AREA_016",
+   "perfil": "PERFIL_002",
+   "ativo": true
+  },
+  {
+   "organizacao": "ORG_001",
+   "email": "thais.v@hc.fm.usp.br",
+   "nome": "Thais",
+   "area": "AREA_008",
+   "perfil": "PERFIL_003",
+   "ativo": true
+  },
+  {
+   "organizacao": "ORG_001",
+   "email": "pamela.santos@hc.fm.usp.br",
+   "nome": "Pamela Santos",
+   "area": "AREA_008",
+   "perfil": "PERFIL_003",
+   "ativo": true
+  },
+  {
+   "organizacao": "ORG_001",
+   "email": "ricardo.borges@hc.fm.usp.br",
+   "nome": "Ricardo Borges",
+   "area": "AREA_016",
+   "perfil": "PERFIL_003",
+   "ativo": true
   }
  ]
 } as const;

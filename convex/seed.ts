@@ -7,7 +7,52 @@ import { seedData as d } from "./seedData";
 export const carregar = internalMutation({
   args: {},
   handler: async (ctx) => {
-    if (await ctx.db.query("organizacoes").first()) return "Já carregado — nada feito.";
+    const organizacoesExistentes = await ctx.db.query("organizacoes").collect();
+    if (organizacoesExistentes.length > 0) {
+      const quadrosPorCodigo = new Map<string, (typeof d.quadros)[number]>();
+      for (const item of d.quadros) quadrosPorCodigo.set(item.codigo, item);
+
+      let usuariosAdicionados = 0;
+      for (const u of d.usuarios) {
+        const existente = await ctx.db
+          .query("usuarios")
+          .withIndex("by_email", (q) => q.eq("email", u.email.toLowerCase()))
+          .unique();
+        if (existente) continue;
+
+        const organizacaoSeed = d.organizacoes.find((item) => item.codigo === u.organizacao);
+        const organizacao = organizacoesExistentes.find((item) => item.nome === organizacaoSeed?.nome);
+        const perfilSeed = d.perfis.find((item) => item.codigo === u.perfil);
+        const perfil = perfilSeed
+          ? await ctx.db.query("perfis_acesso").withIndex("by_codigo", (q) => q.eq("codigo", perfilSeed.cod)).unique()
+          : null;
+        const areaSeed = d.areas.find((item) => item.codigo === u.area);
+        const quadroSeed = areaSeed ? quadrosPorCodigo.get(areaSeed.quadro) : undefined;
+        const quadro = organizacao && quadroSeed
+          ? (await ctx.db.query("quadros")
+              .withIndex("by_organizacao", (q) => q.eq("organizacao_id", organizacao._id))
+              .collect()).find((item) => item.nome === quadroSeed.nome)
+          : undefined;
+        const area = quadro && areaSeed
+          ? (await ctx.db.query("areas").withIndex("by_quadro", (q) => q.eq("quadro_id", quadro._id)).collect())
+              .find((item) => item.macroarea === areaSeed.macroarea && item.setor === areaSeed.setor)
+          : undefined;
+
+        if (!organizacao || !perfil || !area) {
+          throw new Error(`Não foi possível sincronizar o cadastro de ${u.email}: organização, perfil ou área ausente.`);
+        }
+        await ctx.db.insert("usuarios", {
+          organizacao_id: organizacao._id,
+          email: u.email.toLowerCase(),
+          nome: u.nome,
+          area_id: area._id,
+          perfil_id: perfil._id,
+          ativo: u.ativo,
+        });
+        usuariosAdicionados++;
+      }
+      return `Já carregado — usuários adicionados: ${usuariosAdicionados}.`;
+    }
 
     const org = new Map<string, Id<"organizacoes">>();
     for (const o of d.organizacoes)

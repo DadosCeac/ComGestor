@@ -7,8 +7,7 @@ import { escopoDe, podeVerCard, usuarioAtual } from "./lib/acesso";
 const modules = import.meta.glob("./**/*.ts");
 
 async function logar(t: ReturnType<typeof convexTest>, email: string) {
-  const authId = await t.run((ctx) => ctx.db.insert("users", { email }));
-  return t.withIdentity({ subject: `${authId}|sessao` });
+  return t.withIdentity({ subject: `user_${email}`, email, email_verified: true });
 }
 
 test("seed + perfis por e-mail + escopos + visibilidade", async () => {

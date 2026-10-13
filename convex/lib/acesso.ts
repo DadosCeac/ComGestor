@@ -15,7 +15,9 @@ export type Sessao = {
 export async function usuarioAtual(ctx: Ctx): Promise<Sessao> {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) throw new Error("Não autenticado.");
-  if (identity.emailVerified === false) throw new Error("E-mail não verificado.");
+  if (identity.emailVerified !== true && identity.email_verified !== true) {
+    throw new Error("E-mail não verificado.");
+  }
   const email = identity.email?.trim().toLowerCase();
   if (!email) throw new Error("Token sem e-mail (confira a integração Clerk ↔ Convex).");
 
@@ -25,8 +27,18 @@ export async function usuarioAtual(ctx: Ctx): Promise<Sessao> {
     .unique();
   if (!usuario || !usuario.ativo) throw new Error("Usuário sem acesso ao ComGestor.");
 
-  const [area, perfil] = await Promise.all([ctx.db.get(usuario.area_id), ctx.db.get(usuario.perfil_id)]);
-  if (!area || !perfil) throw new Error("Cadastro de usuário inconsistente (área/perfil).");
+  const [area, perfil, organizacao] = await Promise.all([
+    ctx.db.get(usuario.area_id),
+    ctx.db.get(usuario.perfil_id),
+    ctx.db.get(usuario.organizacao_id),
+  ]);
+  if (!area || !perfil || !organizacao) throw new Error("Cadastro de usuário inconsistente (organização/área/perfil).");
+  if (!area.ativa || !organizacao.ativa) throw new Error("Área ou organização inativa.");
+  if (area.organizacao_id !== organizacao._id) throw new Error("Área não pertence à organização do usuário.");
+  const quadro = await ctx.db.get(area.quadro_id);
+  if (!quadro || !quadro.ativo || quadro.organizacao_id !== organizacao._id) {
+    throw new Error("Quadro da área não pertence à organização do usuário.");
+  }
   return { usuario, perfil, quadro_id: area.quadro_id };
 }
 
@@ -51,6 +63,7 @@ export async function exigir(ctx: Ctx, s: Sessao, codigo: string): Promise<Escop
 /** Visibilidade do card. DECISÃO PENDENTE: aqui o ADMIN enxerga tudo, inclusive PESSOAS_ESPECIFICAS.
  *  Para dados de saúde ocupacional (LGPD), considere tirar esse atalho. */
 export async function podeVerCard(ctx: Ctx, s: Sessao, card: Doc<"cards">): Promise<boolean> {
+  if (card.organizacao_id !== s.usuario.organizacao_id) return false;
   if (s.perfil.codigo === "ADMIN") return true;
   const uid = s.usuario._id;
   if (card.criado_por_id === uid || card.responsavel_conclusao_id === uid) return true;

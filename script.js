@@ -1,4 +1,4 @@
-const AREAS = ["Assistencial", "Administrativo", "Diretoria", "Ocupacional", "Qualidade", "Dados"];
+const AREAS = ["Assistencial", "Operacional", "Administrativo", "Diretoria", "Ocupacional", "Qualidade", "Dados"];
 const FALLBACK_AREA = AREAS[0];
 
 const AREA_COLORS = {
@@ -35,20 +35,12 @@ const COLUMNS = [
 
 const CURRENT_USER = 'Usuário Atual';
 const ACTIVE_CARD_LIMIT = 10;
-const MENTION_USERS = [
-  { name: 'Ana Silva', email: 'ana@converge.local', area: 'Administrativo' },
-  { name: 'Bruno Costa', email: 'bruno@converge.local', area: 'Assistencial' },
-  { name: 'Carlos Souza', email: 'carlos@converge.local', area: 'Dados' },
-  { name: 'Joao Mendes', email: 'joao@converge.local', area: 'Diretoria' },
-  { name: 'Marina Lima', email: 'marina@converge.local', area: 'Ocupacional' },
-  { name: 'Equipe Administrativo', email: 'administrativo@converge.local', area: 'Administrativo' },
-  { name: 'Equipe Qualidade', email: 'qualidade@converge.local', area: 'Qualidade' }
-];
+let MENTION_USERS = [];
 
 let currentArea = AREAS[0];
 let isArchivedView = false;
 let isMyActionsView = false;
-let cards = readStoredJSON('converge_v4_cards', []);
+let cards = [];
 let tempActions = [];
 let pendingActionTitle = '';
 let pendingActionContext = 'drawer';
@@ -58,15 +50,23 @@ let draggedCardId = null;
 let cardWasDragged = false;
 let activeActionIndex = null;
 let isHistoryExpanded = false;
+const persistedCardSnapshots = new Map();
+const queuedCardSnapshots = new Map();
+let persistQueue = Promise.resolve();
 
 function readStoredJSON(key, fallback) {
   try {
-    const stored = localStorage.getItem(key);
+    const stored = localStorage.getItem(userStorageKey(key));
     return stored ? JSON.parse(stored) : fallback;
   } catch (error) {
     console.warn(`Dados salvos inválidos em ${key}.`, error);
     return fallback;
   }
+}
+
+function userStorageKey(key) {
+  const email = window.COMGESTOR_SESSION?.usuario?.email;
+  return email ? `${key}:${email.toLowerCase()}` : key;
 }
 
 function todayISO() {
@@ -84,10 +84,15 @@ function init() {
   const customTags = readStoredJSON('converge_v4_tags', {});
   TAG_COLORS = { ...TAG_COLORS, ...customTags };
   renderAreaPills();
-  document.getElementById('fArea').innerHTML = AREAS.map(a => `<option value="${a}">${a}</option>`).join('');
+  document.getElementById('fArea').innerHTML = areasDisponiveis().map(a => `<option value="${a}">${a}</option>`).join('');
   renderSubareaOptions();
   renderTagOptions();
   render();
+}
+
+function areasDisponiveis() {
+  const quadros = window.COMGESTOR_SESSION?.quadros || [];
+  return quadros.length ? quadros.map(quadro => quadro.nome) : AREAS;
 }
 
 function renderSubareaOptions() {
@@ -96,6 +101,7 @@ function renderSubareaOptions() {
 }
 
 function openSettings() {
+  if (!window.ComGestorConvex.exigirPermissao('TAG_GERENCIAR')) return;
   renderCustomTags();
   document.getElementById('settingsModal').classList.add('open');
   document.getElementById('overlay').classList.add('open');
@@ -134,6 +140,7 @@ function renderCustomTags() {
 }
 
 function addCustomTag() {
+  if (!window.ComGestorConvex.exigirPermissao('TAG_GERENCIAR')) return;
   const input = document.getElementById('newTagName');
   const name = input.value.trim();
   if (!name) { toast('Informe um nome para a etiqueta.'); return; }
@@ -141,7 +148,7 @@ function addCustomTag() {
 
   const customTags = readStoredJSON('converge_v4_tags', {});
   customTags[name] = document.getElementById('newTagColor').value;
-  localStorage.setItem('converge_v4_tags', JSON.stringify(customTags));
+  localStorage.setItem(userStorageKey('converge_v4_tags'), JSON.stringify(customTags));
   TAG_COLORS[name] = customTags[name];
   input.value = '';
   renderCustomTags();
@@ -150,9 +157,10 @@ function addCustomTag() {
 }
 
 function removeCustomTag(name) {
+  if (!window.ComGestorConvex.exigirPermissao('TAG_GERENCIAR')) return;
   const customTags = readStoredJSON('converge_v4_tags', {});
   delete customTags[name];
-  localStorage.setItem('converge_v4_tags', JSON.stringify(customTags));
+  localStorage.setItem(userStorageKey('converge_v4_tags'), JSON.stringify(customTags));
   delete TAG_COLORS[name];
   cards.forEach(card => { card.tags = (card.tags || []).filter(tag => tag !== name); });
   saveStorage();
@@ -164,7 +172,7 @@ function removeCustomTag(name) {
 
 function renderAreaPills() {
   const container = document.getElementById('areaPills');
-  container.innerHTML = AREAS.map(a => {
+  container.innerHTML = areasDisponiveis().map(a => {
     const areaTheme = getAreaTheme(a);
     const isActive = a === currentArea;
     return `
@@ -185,6 +193,7 @@ function renderAreaPills() {
 function handleDropOnArea(e, targetArea) {
   e.preventDefault();
   e.target.classList.remove('drag-over-pill');
+  if (!window.ComGestorConvex.exigirPermissao('CARD_TRANSFERIR')) return;
 
   const id = Number(e.dataTransfer.getData('text/plain'));
   const cardIndex = cards.findIndex(c => c.id === id);
@@ -619,6 +628,7 @@ function saveCommentOnEnter(event, saveFunction) {
 }
 
 function addActionComment() {
+  if (!window.ComGestorConvex.exigirPermissao('COMENTARIO_CRIAR')) return;
   const card = cards.find(c => c.id === activeCardId);
   const action = card?.actions?.[activeActionIndex];
   const editor = document.getElementById('actionCommentText');
@@ -706,6 +716,7 @@ function addAttachmentActivities(action, attachments) {
 }
 
 function addActionAttachment(index, input) {
+  if (!window.ComGestorConvex.exigirPermissao('ANEXO_GERENCIAR')) return;
   const card = cards.find(c => c.id === activeCardId);
   const action = card?.actions?.[index];
   const file = input.files?.[0];
@@ -727,6 +738,7 @@ function addActionAttachment(index, input) {
 }
 
 function addActionLink(index) {
+  if (!window.ComGestorConvex.exigirPermissao('ANEXO_GERENCIAR')) return;
   const card = cards.find(c => c.id === activeCardId);
   const action = card?.actions?.[index];
   const input = document.getElementById(`actionLink-${index}`);
@@ -849,6 +861,7 @@ function renderCardTags(tags) {
 }
 
 function toggleCardTag(tag) {
+  if (!window.ComGestorConvex.exigirPermissao('CARD_EDITAR')) return;
   const card = cards.find(c => c.id === activeCardId);
   if (card) {
     if (!card.tags) card.tags = [];
@@ -1309,6 +1322,7 @@ function renderComments(comments) {
 }
 
 function addComment() {
+  if (!window.ComGestorConvex.exigirPermissao('COMENTARIO_CRIAR')) return;
   const editor = document.getElementById('newCommentText');
   const text = editor.textContent.trim();
   const html = editor.innerHTML.trim();
@@ -1377,6 +1391,7 @@ function closeCardDetailModal() {
 }
 
 function triggerAddAction() {
+  if (!window.ComGestorConvex.exigirPermissao('ACAO_CRIAR')) return;
   const text = document.getElementById('newActionInput').value.trim();
   if (!text) { toast('Preencha o campo de ação antes de configurar o prazo.'); return; }
 
@@ -1393,6 +1408,7 @@ function triggerAddAction() {
 }
 
 function startDetailAction() {
+  if (!window.ComGestorConvex.exigirPermissao('ACAO_CRIAR')) return;
   pendingActionTitle = '';
   pendingActionContext = 'detail';
   document.getElementById('modalActionText').value = '';
@@ -1420,6 +1436,7 @@ function closeActionModal() {
 }
 
 function saveActionFromModal() {
+  if (!window.ComGestorConvex.exigirPermissao('ACAO_CRIAR')) return;
   const title = document.getElementById('modalActionText').value.trim();
   const resp = document.getElementById('modalResponsible').value.trim();
   if (!title) { toast('Informe a descrição da ação.'); return; }
@@ -1500,6 +1517,13 @@ function removeTempAction(idx) {
 }
 
 function openForm(id = null) {
+  const permissao = id ? 'CARD_EDITAR' : 'CARD_CRIAR';
+  if (!window.ComGestorConvex.exigirPermissao(permissao)) return;
+  const escopo = window.COMGESTOR_SESSION.permissoes[permissao];
+  if (!id && escopo !== 'TODOS' && currentArea !== window.COMGESTOR_SESSION.quadro.nome) {
+    toast('Seu perfil só pode criar cards no quadro da sua área.');
+    return;
+  }
   const card = cards.find(c => c.id === id);
   document.getElementById('cardId').value = id || '';
   document.getElementById('drawerTitle').textContent = id ? 'Editar Card' : 'Novo Card';
@@ -1547,6 +1571,16 @@ function toggleUsersSelection() {
 
 function saveCard() {
   const id = Number(document.getElementById('cardId').value);
+  const permissao = id ? 'CARD_EDITAR' : 'CARD_CRIAR';
+  if (!window.ComGestorConvex.exigirPermissao(permissao)) return;
+  const areaDestino = id
+    ? cards.find(c => c.id === id)?.area
+    : document.getElementById('fArea').value;
+  const escopo = window.COMGESTOR_SESSION.permissoes[permissao];
+  if (escopo !== 'TODOS' && areaDestino !== window.COMGESTOR_SESSION.quadro.nome) {
+    toast('Seu perfil só pode alterar cards do quadro da sua área.');
+    return;
+  }
   const title = document.getElementById('fTitle').value.trim();
 
   if (!title) { toast('O título é obrigatório.'); return; }
@@ -1741,6 +1775,7 @@ function moveCardToArea(card, targetArea) {
 }
 
 function openShareCard() {
+  if (!window.ComGestorConvex.exigirPermissao('COMPARTILHAMENTO_GERENCIAR')) return;
   const currentCardId = Number(activeCardId ?? document.getElementById('detailTitle')?.dataset?.cardId ?? 0);
   const card = cards.find(item => item.id === currentCardId) || cards.find(item => item.id === activeCardId);
   if (!card || !card.id) {
@@ -1755,7 +1790,9 @@ function openShareCard() {
     return;
   }
 
-  const options = AREAS.filter(area => area !== card.area);
+  const options = window.COMGESTOR_SESSION.quadrosCompartilhamento
+    .map(quadro => quadro.nome)
+    .filter(area => area !== card.area);
   const currentSharedValue = String(card.sharedWith || '').split(',').map(item => item.trim()).filter(Boolean).find(area => AREAS.includes(area) && area !== card.area);
 
   select.innerHTML = options.map(area => `<option value="${area}">${area}</option>`).join('');
@@ -1779,7 +1816,8 @@ function closeShareModal() {
   }
 }
 
-function confirmShareCard() {
+async function confirmShareCard() {
+  if (!window.ComGestorConvex.exigirPermissao('COMPARTILHAMENTO_GERENCIAR')) return;
   const currentCardId = Number(activeCardId ?? document.getElementById('detailTitle')?.dataset?.cardId ?? 0);
   const card = cards.find(item => item.id === currentCardId) || cards.find(item => item.id === activeCardId);
   const select = document.getElementById('shareAreaSelect');
@@ -1795,6 +1833,22 @@ function confirmShareCard() {
     return;
   }
 
+  const quadroDestino = window.COMGESTOR_SESSION.quadrosCompartilhamento
+    .find(quadro => quadro.nome === value);
+  if (!quadroDestino) {
+    toast('Você não tem acesso a esse quadro para compartilhar.');
+    return;
+  }
+  try {
+    await persistQueue;
+    if (!card._convexId) throw new Error('O card ainda não foi salvo no Convex.');
+    await window.ComGestorConvex.compartilharCard(card._convexId, quadroDestino);
+  } catch (error) {
+    console.error('Não foi possível compartilhar o card no Convex.', error);
+    toast(error instanceof Error ? error.message : 'Não foi possível compartilhar o card.');
+    return;
+  }
+
   const colorAreaBeforeShare = getCardOriginArea(card);
   card.sharedWith = value.trim();
   card.colorArea = colorAreaBeforeShare;
@@ -1807,10 +1861,13 @@ function confirmShareCard() {
 }
 
 function openTransferCard() {
+  if (!window.ComGestorConvex.exigirPermissao('CARD_TRANSFERIR')) return;
   const card = cards.find(item => item.id === activeCardId);
   if (!card) return;
   const select = document.getElementById('transferAreaSelect');
-  select.innerHTML = AREAS.filter(area => area !== card.area).map(area => `<option value="${area}">${area}</option>`).join('');
+  select.innerHTML = window.COMGESTOR_SESSION.quadrosDestino
+    .filter(quadro => quadro.nome !== card.area)
+    .map(quadro => `<option value="${quadro.nome}">${quadro.nome}</option>`).join('');
   document.getElementById('overlay').classList.add('open');
   document.getElementById('transferModal').classList.add('open');
 }
@@ -1823,6 +1880,7 @@ function closeTransferModal() {
 }
 
 function confirmTransferCard() {
+  if (!window.ComGestorConvex.exigirPermissao('CARD_TRANSFERIR')) return;
   const card = cards.find(item => item.id === activeCardId);
   const targetArea = document.getElementById('transferAreaSelect').value;
   if (!card || !targetArea) return;
@@ -1883,7 +1941,7 @@ function clearAllCards() {
 
   cards = [];
   activeCardId = null;
-  localStorage.removeItem('converge_v4_cards');
+  localStorage.removeItem(userStorageKey('converge_v4_cards'));
   saveStorage();
   closeCardDetailModal();
   closeDrawer();
@@ -1897,11 +1955,43 @@ function clearAllCards() {
 
 function saveStorage() {
   try {
-    localStorage.setItem('converge_v4_cards', JSON.stringify(cards));
+    localStorage.setItem(userStorageKey('converge_v4_cards'), JSON.stringify(cards));
   } catch (error) {
     console.error('Não foi possível salvar os cards.', error);
     toast('Não foi possível salvar. Remova anexos grandes e tente novamente.');
   }
+
+  for (const card of cards) persistCardToConvex(card);
+}
+
+function persistCardToConvex(card) {
+  const key = String(card.id);
+  const snapshot = JSON.stringify(card);
+  if (persistedCardSnapshots.get(key) === snapshot || queuedCardSnapshots.get(key) === snapshot) return;
+  queuedCardSnapshots.set(key, snapshot);
+  const data = JSON.parse(snapshot);
+
+  persistQueue = persistQueue.then(async () => {
+    const quadro = window.COMGESTOR_SESSION.quadrosDestino.find(item => item.nome === data.area);
+    if (!quadro) throw new Error(`Não há acesso ao quadro ${data.area}.`);
+
+    if (card._convexId && card._convexBoardId && card._convexBoardId !== quadro.id) {
+      await window.ComGestorConvex.transferirCard(card._convexId, quadro);
+    }
+    const cardId = await window.ComGestorConvex.persistirCard({
+      ...data,
+      _convexId: card._convexId || data._convexId
+    }, quadro);
+    card._convexId = cardId;
+    card._convexBoardId = quadro.id;
+    const salvo = JSON.stringify(card);
+    persistedCardSnapshots.set(key, salvo);
+    queuedCardSnapshots.set(key, salvo);
+  }).catch(error => {
+    queuedCardSnapshots.delete(key);
+    console.error('Não foi possível salvar o card no Convex.', error);
+    toast(error instanceof Error ? error.message : 'Não foi possível salvar o card no Convex.');
+  });
 }
 
 function toast(msg) {
@@ -1941,4 +2031,43 @@ function esc(s) {
   return String(s || '').replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[m]));
 }
 
-init();
+async function iniciarAplicacaoProtegida() {
+  try {
+    const sessao = await window.ComGestorConvex.minhaSessao();
+    window.COMGESTOR_SESSION = sessao;
+    MENTION_USERS = sessao.usuarios || [];
+    const dadosLocais = readStoredJSON('converge_v4_cards', []);
+    const cardsRemotos = await window.ComGestorConvex.listarCards(sessao.quadros);
+    cards = cardsRemotos.length
+      ? cardsRemotos
+      : dadosLocais.filter(card => sessao.quadros.some(quadro => quadro.nome === card.area));
+    persistedCardSnapshots.clear();
+    queuedCardSnapshots.clear();
+    for (const card of cards) {
+      if (card._convexId) persistedCardSnapshots.set(String(card.id), JSON.stringify(card));
+    }
+    sessionStorage.removeItem('comgestor_auth');
+    sessionStorage.removeItem('comgestor_token');
+
+    const perfil = document.getElementById('activeUserProfile');
+    perfil.textContent = `${sessao.usuario.nome} · ${sessao.perfil.nome} · ${sessao.area.setor}`;
+
+    document.querySelectorAll('[data-requires-permission]').forEach(element => {
+      const codigo = element.dataset.requiresPermission;
+      element.style.display = window.ComGestorConvex.temPermissao(codigo) ? '' : 'none';
+    });
+
+    if (areasDisponiveis().includes(sessao.quadro.nome)) currentArea = sessao.quadro.nome;
+    document.body.classList.remove('auth-pending');
+    init();
+    if (!cardsRemotos.length && cards.some(card => !card._convexId)) {
+      toast('Salvando cards locais permitidos no Convex...');
+      for (const card of cards) persistCardToConvex(card);
+    }
+  } catch (error) {
+    console.error('Não foi possível validar a sessão do ComGestor no Convex.', error);
+    window.location.replace('./login.html');
+  }
+}
+
+iniciarAplicacaoProtegida();

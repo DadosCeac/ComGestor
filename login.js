@@ -13,6 +13,7 @@ const errorBox =
 const loadingBox =
   document.getElementById("login-loading");
 
+let validandoAcesso = false;
 
 function showError(message) {
   errorBox.textContent = message;
@@ -158,6 +159,8 @@ async function iniciarLogin() {
 
 
 async function verificarUsuario() {
+  if (validandoAcesso) return;
+  validandoAcesso = true;
 
   try {
 
@@ -165,46 +168,15 @@ async function verificarUsuario() {
     hideError();
 
     console.log(
-      "6. Obtendo token do Clerk..."
+      "6. Validando sessão no Convex..."
     );
 
-   const token =
-  await window.Clerk.session.getToken();
-
-    if (!token) {
-
-      throw new Error(
-        "Token do Clerk não encontrado."
-      );
-
+    if (!window.ComGestorConvex) {
+      throw new Error("Cliente Convex não foi carregado.");
     }
 
-    console.log(
-      "7. Token recebido."
-    );
-
-    /*
-      IMPORTANTE:
-      nesta etapa estamos apenas verificando
-      a autenticação do Clerk.
-
-      Depois ligamos essa autenticação
-      diretamente ao usuário do Convex.
-    */
-
-    sessionStorage.setItem(
-      "comgestor_auth",
-      "true"
-    );
-
-    sessionStorage.setItem(
-      "comgestor_token",
-      token
-    );
-
-    console.log(
-      "8. Login realizado."
-    );
+    const sessao = await window.ComGestorConvex.minhaSessao();
+    console.log("7. Acesso validado pelo Convex.", sessao.perfil.codigo);
 
     /*
       Entra no ComGestor.
@@ -218,12 +190,17 @@ window.location.href = "/ComGestor/index.html";
       error
     );
 
-    showError(
-      "Seu login foi realizado, mas não foi possível " +
-      "validar seu acesso ao ComGestor."
-    );
+    const mensagem = error instanceof Error ? error.message : "";
+    if (/sem acesso|não autorizado/i.test(mensagem)) {
+      showError("Sua conta não está autorizada no ComGestor. Solicite acesso ao administrador.");
+    } else if (/could not find public function|function.*not found/i.test(mensagem)) {
+      showError("O serviço de acesso ainda não foi publicado no Convex. Solicite ao administrador a publicação do backend e tente novamente.");
+    } else {
+      showError("Não foi possível validar seu acesso no Convex. Verifique a integração e tente novamente.");
+    }
 
     hideLoading();
+    validandoAcesso = false;
   }
 
 }

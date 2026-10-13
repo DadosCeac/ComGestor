@@ -14,6 +14,14 @@
 * { box-sizing: border-box; }
 
 body { margin: 0; font-family: Inter, system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); }
+.auth-pending .app { visibility: hidden; }
+#auth-gate-status { display: none; }
+.auth-pending #auth-gate-status { display: block; padding: 32px; text-align: center; color: var(--muted); }
+.active-user-profile { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+.auth-pending .app { visibility: hidden; }
+#auth-gate-status { display: none; }
+.auth-pending #auth-gate-status { display: block; padding: 32px; text-align: center; color: var(--muted); }
+.active-user-profile { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
 button, input, textarea, select { font: inherit; }
 button { cursor: pointer; }
 

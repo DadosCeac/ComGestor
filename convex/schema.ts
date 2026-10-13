@@ -59,7 +59,8 @@ export default defineSchema({
     ativo: v.boolean(),
   })
     .index("by_email", ["email"])
-    .index("by_area", ["area_id"]),
+    .index("by_area", ["area_id"])
+    .index("by_organizacao", ["organizacao_id"]),
 
   status: defineTable({
     codigo: v.string(),
@@ -96,6 +97,7 @@ export default defineSchema({
     endereco: v.optional(v.string()),
     latitude: v.optional(v.number()),
     longitude: v.optional(v.number()),
+    dados_interface: v.optional(v.any()),
     em_andamento_desde: v.optional(v.number()),
     concluido_em: v.optional(v.number()),
     criado_em: v.number(),
