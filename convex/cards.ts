@@ -3,7 +3,14 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
-import { exigir, podeVerCard, usuarioAtual, type Sessao } from "./lib/acesso";
+import {
+  exigir,
+  podeEditarCard,
+  podeVerCard,
+  usuarioAtual,
+  type Sessao,
+} from "./lib/acesso";
+
 
 async function validarDadosAdicionais(
   ctx: MutationCtx,
