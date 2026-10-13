@@ -135,10 +135,28 @@ test("seed + perfis por e-mail + escopos + visibilidade", async () => {
   const titulos = async (email: string) =>
     ((await (await logar(t, email)).query(api.cards.listarPorQuadro, { quadro_id: qual })) as { titulo: string }[]).map((c) => c.titulo).sort();
 
-  expect(await titulos("thais.v@hc.fm.usp.br")).toEqual(["Aberto", "Reservado"]); // criadora
-  expect(await titulos("pamela.santos@hc.fm.usp.br")).toEqual(["Aberto"]);         // mesmo quadro, sem menção
-  expect(await titulos("ricardo.borges@hc.fm.usp.br")).toEqual([]);              // outro quadro
-  expect(await titulos("ellen.fgomes@hc.fm.usp.br")).toEqual(["Aberto", "Reservado"]); // admin
+ expect(await titulos("thais.v@hc.fm.usp.br")).toEqual([
+  "Aberto",
+  "Card atualizado pelo app",
+  "Reservado",
+  "Reservado para Pamela",
+]); // criadora
+
+expect(await titulos("pamela.santos@hc.fm.usp.br")).toEqual([
+  "Aberto",
+  "Card atualizado pelo app",
+  "Reservado para Pamela",
+]); // mesmo quadro e card compartilhado diretamente
+
+expect(await titulos("ricardo.borges@hc.fm.usp.br")).toEqual([]); // outro quadro
+
+expect(await titulos("ellen.fgomes@hc.fm.usp.br")).toEqual([
+  "Aberto",
+  "Card atualizado pelo app",
+  "Reservado",
+  "Reservado para Pamela",
+]); // admin
+  
 
   // usuário comum não cria card em quadro alheio
   await expect(thais.mutation(api.cards.criar, { ...base, quadro_id: adm, titulo: "X", visibilidade: "EQUIPE_INTEIRA" })).rejects.toThrow(/seu quadro/);
