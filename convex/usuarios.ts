@@ -36,24 +36,29 @@ export const minhaSessao = query({
     const quadrosCompartilhamento = permissoes.COMPARTILHAMENTO_GERENCIAR
       ? quadrosDaOrganizacao.filter((quadro) => quadro.ativo).map(({ _id, nome }) => ({ id: _id, nome }))
       : quadros;
-    const usuariosDaOrganizacao = permissoes.COMPARTILHAMENTO_GERENCIAR
-      ? await ctx.db
-        .query("usuarios")
-        .withIndex("by_organizacao", (q) => q.eq("organizacao_id", sessao.usuario.organizacao_id))
-        .collect()
-      : [];
-    const usuariosCompartilhamento = await Promise.all(usuariosDaOrganizacao
-      .filter((usuario) => usuario.ativo)
-      .map(async (usuario) => {
-        const areaUsuario = await ctx.db.get(usuario.area_id);
-        const quadroUsuario = areaUsuario ? await ctx.db.get(areaUsuario.quadro_id) : null;
-        return {
-          id: usuario._id,
-          nome: usuario.nome,
-          email: usuario.email,
-          area: quadroUsuario?.nome ?? "",
-        };
-      }));
+    const usuariosDaOrganizacao = await ctx.db
+      .query("usuarios")
+      .withIndex("by_organizacao", (q) => q.eq("organizacao_id", sessao.usuario.organizacao_id))
+      .collect();
+    const usuariosCompartilhamento = (await Promise.all(usuariosDaOrganizacao.map(async (usuario) => {
+      if (!usuario.ativo) return null;
+      const areaUsuario = await ctx.db.get(usuario.area_id);
+      const perfilUsuario = await ctx.db.get(usuario.perfil_id);
+      const quadroUsuario = areaUsuario ? await ctx.db.get(areaUsuario.quadro_id) : null;
+      if (
+        !areaUsuario?.ativa ||
+        areaUsuario.organizacao_id !== sessao.usuario.organizacao_id ||
+        !perfilUsuario ||
+        !quadroUsuario?.ativo ||
+        quadroUsuario.organizacao_id !== sessao.usuario.organizacao_id
+      ) return null;
+      return {
+        id: usuario._id,
+        nome: usuario.nome,
+        email: usuario.email,
+        area: quadroUsuario.nome,
+      };
+    }))).filter((usuario): usuario is NonNullable<typeof usuario> => usuario !== null);
 
     return {
       usuario: { nome: sessao.usuario.nome, email: sessao.usuario.email },

@@ -28,7 +28,7 @@
     <div class="nav-title">Navegação</div>
     <nav class="nav">
       <button class="active" id="btnMainBoard" onclick="showMainBoard()">▦ <span>Quadros de Ação</span></button>
-      <button id="btnMyActions" onclick="showMyActions()">✓ <span>Minhas ações</span></button>
+      <button id="btnMyActions" onclick="showMyActions()">✓ <span>Minhas ações</span><span id="myActionsBadge" class="nav-badge" aria-hidden="true" hidden></span></button>
     </nav>
   </aside>
 
@@ -81,7 +81,13 @@
 <div class="overlay" id="overlay" onclick="closeAll()"></div>
 <div class="modal" id="actionModal">
   <h3>Configurar Prazo da Ação</h3>
-  <div class="field"><label>Ação *</label><input id="modalActionText" placeholder="Descreva a ação"></div>
+  <div class="field">
+    <label>Ação *</label>
+    <div class="mention-input-wrap">
+      <input id="modalActionText" placeholder="Descreva a ação..." oninput="handleTextMentionInput(event, 'modalActionText', 'modalActionMentionSuggestions')" onkeydown="handleTextMentionKeydown(event, 'modalActionText', 'modalActionMentionSuggestions')">
+      <div id="modalActionMentionSuggestions" class="mention-suggestions" role="listbox" aria-label="Pessoas para mencionar"></div>
+    </div>
+  </div>
   <div class="grid2">
     <div class="field"><label>Data Início</label><input type="date" id="modalStartDate" readonly></div>
     <div class="field"><label>Prazo (dias) *</label><input type="number" id="modalDays" min="1" value="5" oninput="calculateModalDueDate()"></div>
@@ -160,7 +166,10 @@
         <span>≡ Descrição</span>
         <span class="inline-save-hint">Salva automaticamente</span>
       </div>
-      <textarea class="detail-desc-box detail-desc-editor" id="detailDesc" placeholder="Escreva uma descrição..." oninput="updateDetailDescription()" onblur="refreshAfterDescriptionEdit()"></textarea>
+      <div class="mention-input-wrap detail-description-mention-wrap">
+        <textarea class="detail-desc-box detail-desc-editor" id="detailDesc" placeholder="Escreva uma descrição..." oninput="updateDetailDescription(); handleTextMentionInput(event, 'detailDesc', 'detailDescMentionSuggestions')" onkeydown="handleTextMentionKeydown(event, 'detailDesc', 'detailDescMentionSuggestions')" onblur="refreshAfterDescriptionEdit()"></textarea>
+        <div id="detailDescMentionSuggestions" class="mention-suggestions" role="listbox" aria-label="Pessoas para mencionar"></div>
+      </div>
 
       <div class="detail-section-title">
         <span>☑ Plano de Ação</span>
@@ -220,7 +229,13 @@
     <input type="hidden" id="cardId">
 
     <div class="field"><label>Título do Card *</label><input id="fTitle" placeholder="Informe o título principal do card"></div>
-    <div class="field"><label>Descrição</label><textarea id="fDesc" placeholder="Detalhes, contextualização ou observações..."></textarea></div>
+    <div class="field">
+      <label>Descrição</label>
+      <div class="mention-input-wrap">
+        <textarea id="fDesc" placeholder="Detalhes, contextualização ou observações..." oninput="handleTextMentionInput(event, 'fDesc', 'fDescMentionSuggestions')" onkeydown="handleTextMentionKeydown(event, 'fDesc', 'fDescMentionSuggestions')"></textarea>
+        <div id="fDescMentionSuggestions" class="mention-suggestions" role="listbox" aria-label="Pessoas para mencionar"></div>
+      </div>
+    </div>
 
     <div class="grid2">
       <div class="field">
@@ -237,7 +252,7 @@
     <div class="grid2">
       <div class="field">
         <label>Quem criou *</label>
-        <input id="fCreator" maxlength="60" placeholder="Nome de quem poderá concluir">
+        <input id="fCreator" type="email" readonly aria-readonly="true">
       </div>
       <div class="field">
         <label>Urgência *</label>
@@ -257,9 +272,9 @@
         </select>
       </div>
       <div class="field" id="usersField" style="display:none;">
-        <label>Compartilhar com pessoas</label>
+        <label>Pessoas com acesso ao ComGestor</label>
         <div class="mention-input-wrap">
-          <input id="fSelectedUsers" placeholder="Ex.: @Ana, @Bruno" oninput="handleSelectedUsersMentionInput()" onkeydown="handleSelectedUsersMentionKeydown(event)">
+          <input id="fSelectedUsers" placeholder="Digite @ para mencionar pessoas" oninput="handleSelectedUsersMentionInput()" onkeydown="handleSelectedUsersMentionKeydown(event)">
           <div id="selectedUsersMentionSuggestions" class="mention-suggestions" role="listbox" aria-label="Pessoas para compartilhar"></div>
         </div>
       </div>

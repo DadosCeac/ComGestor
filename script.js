@@ -33,13 +33,21 @@ const COLUMNS = [
 
 ];
 
-const CURRENT_USER = 'Usuário Atual';
 const ACTIVE_CARD_LIMIT = 10;
 let MENTION_USERS = [];
+
+function currentUserName() {
+  return window.COMGESTOR_SESSION?.usuario?.nome || 'Usuário Atual';
+}
+
+function currentUserEmail() {
+  return window.COMGESTOR_SESSION?.usuario?.email || '';
+}
 
 let currentArea = AREAS[0];
 let isArchivedView = false;
 let isMyActionsView = false;
+let myActionsLayout = 'grid';
 let cards = [];
 let tempActions = [];
 let pendingActionTitle = '';
@@ -50,6 +58,8 @@ let draggedCardId = null;
 let cardWasDragged = false;
 let activeActionIndex = null;
 let isHistoryExpanded = false;
+let mentionRefreshTimer = null;
+let mentionRefreshInProgress = false;
 const persistedCardSnapshots = new Map();
 const queuedCardSnapshots = new Map();
 let persistQueue = Promise.resolve();
@@ -326,11 +336,30 @@ function getDeadlineStatus(actions, isCompletedCard) {
 function render() {
   const board = document.getElementById('board');
   const q = document.getElementById('search').value.toLowerCase();
+  const mentions = getCurrentUserMentions();
+  const mentionCount = mentions.length;
+  updateMyActionsBadge(mentionCount);
 
   if (isMyActionsView) {
-    const actions = cards.flatMap(card => (card.actions || []).filter(action => action.responsible === CURRENT_USER && !action.completed).map(action => ({ card, action })));
-    board.style.gridTemplateColumns = 'repeat(auto-fit, minmax(260px, 1fr))';
-    board.innerHTML = `<div class="my-actions-panel"><div class="col-head"><span>PENDÊNCIAS DE ${CURRENT_USER.toUpperCase()}</span><span class="count">${actions.length}</span></div>${actions.length ? actions.map(({ card, action }) => `<button class="my-action-row" onclick="openCardDetailModal(${card.id})"><strong>${esc(action.title)}</strong><span>${esc(card.title)} · ${esc(card.area)}${card.subarea ? ` / ${esc(card.subarea)}` : ''}</span><small>Prazo: ${esc(action.dueDate)}</small></button>`).join('') : '<p class="empty-state">Nenhuma pendência atribuída a você.</p>'}</div>`;
+    const actions = cards.flatMap(card => (card.actions || []).filter(action =>
+      [currentUserName(), currentUserEmail(), 'Usuário Atual'].includes(action.responsible) && !action.completed
+    ).map(action => ({ card, action })));
+    board.style.gridTemplateColumns = 'minmax(0, 1fr)';
+    board.innerHTML = `
+      <div class="my-actions-panel" data-layout="${myActionsLayout}">
+        <div class="my-actions-toolbar" role="group" aria-label="Visualização das minhas ações">
+          <button type="button" class="my-actions-view-button ${myActionsLayout === 'list' ? 'active' : ''}" aria-pressed="${myActionsLayout === 'list'}" onclick="setMyActionsLayout('list')">☰ Lista</button>
+          <button type="button" class="my-actions-view-button ${myActionsLayout === 'grid' ? 'active' : ''}" aria-pressed="${myActionsLayout === 'grid'}" onclick="setMyActionsLayout('grid')">▦ Grade</button>
+        </div>
+        <div class="my-actions-section">
+        <div class="col-head"><span>PENDÊNCIAS DE ${esc(currentUserName().toUpperCase())}</span><span class="count">${actions.length}</span></div>
+        <div class="my-actions-items">${actions.length ? actions.map(({ card, action }) => `<button class="my-action-row" onclick="openCardDetailModal(${card.id})"><strong>${esc(action.title)}</strong><span>${esc(card.title)} · ${esc(card.area)}${card.subarea ? ` / ${esc(card.subarea)}` : ''}</span><small>Prazo: ${esc(action.dueDate)}</small></button>`).join('') : '<p class="empty-state">Nenhuma pendência atribuída a você.</p>'}</div>
+        </div>
+        <div class="my-actions-section">
+        <div class="col-head" style="margin-top:20px;"><span>MENÇÕES PARA VOCÊ</span><span class="count">${mentionCount}</span></div>
+        <div class="my-actions-items">${mentionCount ? mentions.map(item => `<button class="my-action-row" onclick="openMentionedCard(${item.card.id}, ${item.actionIndex ?? 'null'})"><strong>${esc(item.context)}</strong><span>${esc(item.card.title)} · ${esc(item.card.area)}${item.card.subarea ? ` / ${esc(item.card.subarea)}` : ''}</span><small>${esc(item.author || 'Usuário')} · ${esc(item.date || '')}</small><span>${esc(item.preview)}</span></button>`).join('') : '<p class="empty-state">Ninguém mencionou você ainda.</p>'}</div>
+        </div>
+      </div>`;
     return;
   }
 
@@ -373,6 +402,189 @@ function render() {
         </div>
       </div>`;
   }).join('');
+}
+
+function setMyActionsLayout(layout) {
+  if (layout !== 'list' && layout !== 'grid') return;
+  myActionsLayout = layout;
+  if (isMyActionsView) render();
+}
+
+function updateMyActionsBadge(mentionCount) {
+  const badge = document.getElementById('myActionsBadge');
+  const button = document.getElementById('btnMyActions');
+  if (!badge || !button) return;
+  badge.textContent = mentionCount > 99 ? '99+' : String(mentionCount);
+  badge.hidden = mentionCount === 0;
+  button.setAttribute(
+    'aria-label',
+    mentionCount ? `Minhas ações, ${mentionCount} ${mentionCount === 1 ? 'menção' : 'menções'} para você` : 'Minhas ações'
+  );
+}
+
+function textMentionsCurrentUser(text) {
+  const normalizedText = stripMarkup(text).toLocaleLowerCase();
+  const identifiers = [currentUserName(), currentUserEmail()].filter(Boolean);
+  return identifiers.some(identifier => {
+    const mention = `@${identifier}`.toLocaleLowerCase();
+    let position = normalizedText.indexOf(mention);
+    while (position !== -1) {
+      const nextCharacter = normalizedText[position + mention.length] || '';
+      if (!/[\p{L}\p{N}_]/u.test(nextCharacter)) return true;
+      position = normalizedText.indexOf(mention, position + mention.length);
+    }
+    return false;
+  });
+}
+
+function commentMentionsCurrentUser(comment) {
+  const email = currentUserEmail().toLocaleLowerCase();
+  const name = currentUserName().toLocaleLowerCase();
+  const recordedMention = (comment.mentions || []).some(mention =>
+    Boolean(email && (mention.email || '').toLocaleLowerCase() === email) ||
+    Boolean(name && (mention.name || '').toLocaleLowerCase() === name)
+  );
+  return recordedMention || textMentionsCurrentUser(comment.text);
+}
+
+function isCardConclusionReached(card) {
+  return card.status === 'Concluídos' ||
+    Boolean(card.actions?.length && card.actions.every(action => action.completed));
+}
+
+function getCurrentUserMentions() {
+  const mentions = [];
+  cards.forEach(card => {
+    if (isCardConclusionReached(card)) return;
+
+    if (textMentionsCurrentUser(card.title)) {
+      const author = card.creator;
+      const date = card.createdAt ? formatDate(card.createdAt) : '';
+      mentions.push({
+        card,
+        actionIndex: null,
+        context: 'Menção no título do card',
+        preview: card.title,
+        author,
+        date
+      });
+    }
+    if (textMentionsCurrentUser(card.desc)) {
+      const author = card.creator;
+      const date = card.createdAt ? formatDate(card.createdAt) : '';
+      mentions.push({
+        card,
+        actionIndex: null,
+        context: 'Menção na descrição do card',
+        preview: stripMarkup(card.desc),
+        author,
+        date
+      });
+    }
+    (card.comments || []).forEach(comment => {
+      if (!commentMentionsCurrentUser(comment)) return;
+      mentions.push({
+        card,
+        actionIndex: null,
+        context: 'Menção em comentário do card',
+        preview: stripMarkup(comment.text),
+        author: displayHistoryAuthor(comment.author),
+        date: comment.date
+      });
+    });
+    (card.actions || []).forEach((action, actionIndex) => {
+      if (action.completed) return;
+
+      if (textMentionsCurrentUser(action.title)) {
+        mentions.push({
+          card,
+          actionIndex,
+          context: 'Menção em uma ação',
+          preview: action.title,
+          author: displayHistoryAuthor(action.createdBy),
+          date: action.createdAt
+        });
+      }
+      (action.comments || []).forEach(comment => {
+        if (!commentMentionsCurrentUser(comment)) return;
+        mentions.push({
+          card,
+          actionIndex,
+          context: `Menção em comentário da ação: ${action.title}`,
+          preview: stripMarkup(comment.text),
+          author: displayHistoryAuthor(comment.author),
+          date: comment.date
+        });
+      });
+    });
+  });
+  return mentions;
+}
+
+function openMentionedCard(cardId, actionIndex = null) {
+  activeActionIndex = actionIndex;
+  openCardDetailModal(cardId);
+}
+
+function hasLocalCardChanges() {
+  return cards.some(card => {
+    const key = String(card.id);
+    const currentSnapshot = JSON.stringify(card);
+    return !card._convexId ||
+      persistedCardSnapshots.get(key) !== currentSnapshot ||
+      (queuedCardSnapshots.has(key) && queuedCardSnapshots.get(key) !== currentSnapshot);
+  });
+}
+
+function isCardEditorOpen() {
+  return ['cardDrawer', 'cardDetailModal', 'actionModal', 'settingsModal'].some(id =>
+    document.getElementById(id)?.classList.contains('open')
+  );
+}
+
+async function refreshCardsForMentions() {
+  if (
+    mentionRefreshInProgress ||
+    document.visibilityState !== 'visible' ||
+    isCardEditorOpen() ||
+    hasLocalCardChanges()
+  ) return;
+
+  mentionRefreshInProgress = true;
+  const sessionEmail = currentUserEmail();
+  try {
+    const refreshedCards = await window.ComGestorConvex.listarCards(window.COMGESTOR_SESSION.quadros);
+    if (
+      !refreshedCards.length ||
+      sessionEmail !== currentUserEmail() ||
+      isCardEditorOpen() ||
+      hasLocalCardChanges()
+    ) return;
+
+    const refreshedSnapshot = JSON.stringify(refreshedCards);
+    if (refreshedSnapshot === JSON.stringify(cards)) return;
+    cards = refreshedCards;
+    persistedCardSnapshots.clear();
+    queuedCardSnapshots.clear();
+    for (const card of cards) {
+      if (card._convexId) persistedCardSnapshots.set(String(card.id), JSON.stringify(card));
+    }
+    try {
+      localStorage.setItem(userStorageKey('converge_v4_cards'), JSON.stringify(cards));
+    } catch (error) {
+      console.warn('Não foi possível atualizar o cache local dos cards.', error);
+    }
+    render();
+  } catch (error) {
+    console.warn('Não foi possível atualizar as menções recebidas.', error);
+  } finally {
+    mentionRefreshInProgress = false;
+  }
+}
+
+function startMentionRefresh() {
+  clearInterval(mentionRefreshTimer);
+  mentionRefreshTimer = setInterval(refreshCardsForMentions, 30000);
 }
 
 function cardHTML(c, isArchived = false) {
@@ -444,6 +656,28 @@ function openCardDetailModal(id) {
   activeCardId = id;
   const card = cards.find(c => c.id === id);
   if (!card) return;
+  if (card.status === 'A Fazer') {
+    if (cards.filter(item => item.area === card.area && item.status === 'Em Andamento' && !item.archived).length >= ACTIVE_CARD_LIMIT) {
+      toast(`A área ${card.area} já atingiu o limite de ${ACTIVE_CARD_LIMIT} cards em andamento.`);
+    } else {
+      addHistory(card, 'Movido de A Fazer para Em Andamento');
+      card.inProgressSince = todayISO();
+      card.status = 'Em Andamento';
+
+      if (card.mirrorGroupId) {
+        cards.forEach(item => {
+          if (item.mirrorGroupId === card.mirrorGroupId) {
+            item.status = 'Em Andamento';
+            item.archived = false;
+            item.inProgressSince = card.inProgressSince;
+          }
+        });
+      }
+
+      saveStorage();
+      render();
+    }
+  }
 
   const areaTheme = getAreaTheme(getCardOriginArea(card));
   document.getElementById('detailHeader').style.background = areaTheme.color;
@@ -453,7 +687,7 @@ function openCardDetailModal(id) {
   detailTitle.dataset.cardId = String(card.id);
   document.getElementById('detailDesc').value = card.desc || '';
   renderCardTags(card.tags || []);
-  document.getElementById('detailMeta').innerHTML = `<span><b>Área:</b> ${esc(card.area)}${card.subarea ? ` / ${esc(card.subarea)}` : ''}</span><span><b>Criado em:</b> ${formatDate(card.createdAt)} por ${esc(card.creator || CURRENT_USER)}</span>`;
+  document.getElementById('detailMeta').innerHTML = `<span><b>Área:</b> ${esc(card.area)}${card.subarea ? ` / ${esc(card.subarea)}` : ''}</span><span><b>Criado em:</b> ${formatDate(card.createdAt)} por ${esc(card.creator || currentUserName())}</span>`;
   setHistoryExpanded(false);
   renderHistory(card);
 
@@ -487,9 +721,13 @@ function toggleHistoryExpanded() {
 function renderHistory(card) {
   const container = document.getElementById('detailHistoryList');
   const history = getHistoryEntries(card);
-  const content = history.length ? history.reverse().map(item => `<div class="history-item"><b>${esc(item.text)}</b><span>${esc(item.author || CURRENT_USER)} · ${esc(item.date)}</span></div>`).join('') : '<span class="empty-state">Nenhuma movimentação registrada.</span>';
+  const content = history.length ? history.reverse().map(item => `<div class="history-item"><b>${esc(item.text)}</b><span>${esc(displayHistoryAuthor(item.author))} · ${esc(item.date)}</span></div>`).join('') : '<span class="empty-state">Nenhuma movimentação registrada.</span>';
   container.innerHTML = content;
   setHistoryExpanded(isHistoryExpanded);
+}
+
+function displayHistoryAuthor(author) {
+  return !author || author === 'Usuário Atual' ? currentUserName() : author;
 }
 
 function getHistoryEntries(card) {
@@ -505,7 +743,7 @@ function getHistoryEntries(card) {
     if (action.createdAt) {
       entries.push({
         text: `Plano de ação criado: ${action.title} · Responsável: ${action.responsible}`,
-        author: action.createdBy || CURRENT_USER,
+        author: action.createdBy || currentUserName(),
         date: action.createdAt
       });
     }
@@ -572,7 +810,10 @@ function renderInlineActionDetail(action, index) {
           <span onmousedown="event.preventDefault()" onclick="formatActionComment('I')"><i>I</i></span>
           <span onmousedown="event.preventDefault()" onclick="formatActionComment('Quote')">❞</span>
         </div>
-        <div id="actionCommentText" class="rich-comment-editor" contenteditable="true" data-placeholder="Escreva um comentário..."></div>
+        <div class="mention-editor-wrap">
+          <div id="actionCommentText" class="rich-comment-editor" contenteditable="true" data-placeholder="Escreva um comentário..." oninput="handleMentionInput(event, 'actionCommentText', 'actionCommentMentionSuggestions')" onkeydown="handleMentionKeydown(event, 'actionCommentText', 'actionCommentMentionSuggestions')"></div>
+          <div id="actionCommentMentionSuggestions" class="mention-suggestions" role="listbox" aria-label="Pessoas para mencionar"></div>
+        </div>
       </div>
       <button type="button" class="primary" onclick="addActionComment()">Salvar Comentário</button>
       <div class="comment-list action-comment-list" id="actionCommentsList"></div>
@@ -649,9 +890,10 @@ function addActionComment() {
       if (!action.comments) action.comments = [];
       const now = new Date();
       const actionComment = {
-        author: CURRENT_USER,
+        author: currentUserName(),
         date: now.toLocaleDateString('pt-BR') + ', ' + now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-        text: html
+        text: html,
+        mentions: extractMentions(text)
       };
       action.comments.unshift(actionComment);
       addHistory(card, `Comentário na ação “${action.title}”: ${stripMarkup(html)}`, actionComment.author, actionComment.date);
@@ -705,9 +947,9 @@ function addAttachmentActivities(action, attachments) {
   const date = now.toLocaleDateString('pt-BR') + ', ' + now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
   attachments.forEach(attachment => {
     const card = cards.find(item => item.id === activeCardId);
-    if (card) addHistory(card, `${attachment.type === 'file' ? 'Arquivo' : 'Link'} adicionado à ação “${action.title}”: ${attachment.name}`, CURRENT_USER, date);
+    if (card) addHistory(card, `${attachment.type === 'file' ? 'Arquivo' : 'Link'} adicionado à ação “${action.title}”: ${attachment.name}`, currentUserName(), date);
     action.comments.unshift({
-      author: 'Usuário Atual',
+      author: currentUserName(),
       date,
       text: attachment.type === 'file' ? 'Arquivo anexado à ação.' : 'Link anexado à ação.',
       attachment
@@ -780,7 +1022,7 @@ function updateDetailDescription() {
 function refreshAfterDescriptionEdit() {
   clearTimeout(descriptionSaveTimer);
   const card = cards.find(c => c.id === activeCardId);
-  if (card) addHistory(card, 'Descrição do card atualizada', CURRENT_USER);
+  if (card) addHistory(card, 'Descrição do card atualizada', currentUserName());
   saveStorage();
   render();
 }
@@ -788,20 +1030,22 @@ function refreshAfterDescriptionEdit() {
 function toggleModalAction(idx) {
   const card = cards.find(c => c.id === activeCardId);
   if (card && card.actions[idx]) {
-    if (card.status === 'Concluídos' && card.creator !== CURRENT_USER) {
+    if (card.status === 'Concluídos' && card.creator !== currentUserEmail() && card.creator !== currentUserName()) {
       toast(`Somente ${card.creator || 'quem criou o card'} pode concluir este card.`);
       openCardDetailModal(activeCardId);
       return;
     }
     card.actions[idx].completed = !card.actions[idx].completed;
     const action = card.actions[idx];
-    addHistory(card, `${action.completed ? 'Plano de ação concluído' : 'Plano de ação reaberto'}: ${action.title}`, CURRENT_USER);
+    addHistory(card, `${action.completed ? 'Plano de ação concluído' : 'Plano de ação reaberto'}: ${action.title}`, currentUserName());
+    syncCardStatusWithActions(card);
     
     if (card.mirrorGroupId) {
       cards.forEach(c => {
         if (c.mirrorGroupId === card.mirrorGroupId) {
           c.actions = card.actions;
           c.status = card.status;
+          c.inProgressSince = card.inProgressSince;
         }
       });
     }
@@ -810,6 +1054,20 @@ function toggleModalAction(idx) {
     openCardDetailModal(activeCardId);
     render();
   }
+}
+
+function syncCardStatusWithActions(card) {
+  if (!card.actions?.length || !['A Fazer', 'Em Andamento', 'Concluídos'].includes(card.status)) return;
+
+  const allActionsCompleted = card.actions.every(action => action.completed);
+  const nextStatus = allActionsCompleted
+    ? 'Concluídos'
+    : card.status === 'Concluídos' ? 'Em Andamento' : card.status;
+  if (nextStatus === card.status) return;
+
+  addHistory(card, `Movido de ${card.status} para ${nextStatus}`, currentUserName());
+  card.status = nextStatus;
+  card.inProgressSince = nextStatus === 'Em Andamento' ? todayISO() : '';
 }
 
 function togglePopover(id) {
@@ -1080,15 +1338,20 @@ function formatComment(type) {
 let mentionSelectionIndex = 0;
 
 function getMentionQuery(editor) {
-  const text = editor.textContent || '';
-  const match = text.match(/(?:^|\s)@([^\s@]*)$/);
+  const selection = window.getSelection();
+  if (!selection?.rangeCount || !editor.contains(selection.anchorNode)) return null;
+  const caretRange = selection.getRangeAt(0).cloneRange();
+  const beforeCaret = caretRange.cloneRange();
+  beforeCaret.selectNodeContents(editor);
+  beforeCaret.setEnd(caretRange.startContainer, caretRange.startOffset);
+  const match = beforeCaret.toString().match(/(?:^|\s)@([^\s@]*)$/);
   return match ? match[1].toLowerCase() : null;
 }
 
-function handleMentionInput() {
-  const editor = document.getElementById('newCommentText');
+function handleMentionInput(event, editorId = 'newCommentText', suggestionsId = 'mentionSuggestions') {
+  const editor = document.getElementById(editorId);
   const query = getMentionQuery(editor);
-  const container = document.getElementById('mentionSuggestions');
+  const container = document.getElementById(suggestionsId);
   if (query === null) {
     container.classList.remove('open');
     return;
@@ -1097,15 +1360,22 @@ function handleMentionInput() {
   const matches = MENTION_USERS.filter(user => user.name.toLowerCase().includes(query));
   mentionSelectionIndex = 0;
   container.innerHTML = matches.length ? matches.map((user, index) => `
-    <button type="button" class="mention-option ${index === 0 ? 'active' : ''}" onmousedown="event.preventDefault(); insertMention('${esc(user.name)}')">
+    <button type="button" class="mention-option ${index === 0 ? 'active' : ''}" data-user-index="${MENTION_USERS.indexOf(user)}">
       <strong>@${esc(user.name)}</strong><small>${esc(user.area)} · ${esc(user.email)}</small>
     </button>
   `).join('') : '<div class="empty-state" style="padding:8px 10px;">Nenhuma pessoa encontrada.</div>';
+  container.querySelectorAll('.mention-option').forEach(option => {
+    option.addEventListener('mousedown', clickEvent => {
+      clickEvent.preventDefault();
+      const user = MENTION_USERS[Number(option.dataset.userIndex)];
+      insertMention(user.name, editorId, suggestionsId);
+    });
+  });
   container.classList.add('open');
 }
 
-function handleMentionKeydown(event) {
-  const container = document.getElementById('mentionSuggestions');
+function handleMentionKeydown(event, editorId = 'newCommentText', suggestionsId = 'mentionSuggestions') {
+  const container = document.getElementById(suggestionsId);
   if (container.classList.contains('open')) {
     const options = [...container.querySelectorAll('.mention-option')];
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
@@ -1117,7 +1387,8 @@ function handleMentionKeydown(event) {
     }
     if (event.key === 'Enter' && options.length) {
       event.preventDefault();
-      insertMention(options[mentionSelectionIndex].querySelector('strong').textContent.slice(1));
+      const user = MENTION_USERS[Number(options[mentionSelectionIndex].dataset.userIndex)];
+      insertMention(user.name, editorId, suggestionsId);
       return;
     }
     if (event.key === 'Escape') {
@@ -1125,28 +1396,112 @@ function handleMentionKeydown(event) {
       return;
     }
   }
-  saveCommentOnEnter(event, addComment);
+  saveCommentOnEnter(event, editorId === 'actionCommentText' ? addActionComment : addComment);
 }
 
-function insertMention(name) {
-  const editor = document.getElementById('newCommentText');
+function insertMention(name, editorId = 'newCommentText', suggestionsId = 'mentionSuggestions') {
+  const editor = document.getElementById(editorId);
   const selection = window.getSelection();
-  if (!selection.rangeCount) return;
-  const range = selection.getRangeAt(0);
-  const node = range.startContainer;
-  if (node.nodeType !== Node.TEXT_NODE) return;
-  const beforeCursor = node.textContent.slice(0, range.startOffset);
+  if (!selection?.rangeCount || !editor.contains(selection.anchorNode)) return;
+  const caretRange = selection.getRangeAt(0).cloneRange();
+  const beforeCaret = caretRange.cloneRange();
+  beforeCaret.selectNodeContents(editor);
+  beforeCaret.setEnd(caretRange.startContainer, caretRange.startOffset);
+  const beforeCursor = beforeCaret.toString();
   const match = beforeCursor.match(/(?:^|\s)@[^\s@]*$/);
   if (!match) return;
-  const start = range.startOffset - match[0].length + (match[0].startsWith(' ') ? 1 : 0);
-  range.setStart(node, start);
+  const startOffset = beforeCursor.length - match[0].length + (match[0].startsWith(' ') ? 1 : 0);
+  const textNodes = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
+  let currentOffset = 0;
+  let startNode = null;
+  let startNodeOffset = 0;
+  let textNode;
+  while ((textNode = textNodes.nextNode())) {
+    if (startOffset <= currentOffset + textNode.textContent.length) {
+      startNode = textNode;
+      startNodeOffset = startOffset - currentOffset;
+      break;
+    }
+    currentOffset += textNode.textContent.length;
+  }
+  if (!startNode) return;
+  const range = document.createRange();
+  range.setStart(startNode, startNodeOffset);
+  range.setEnd(caretRange.startContainer, caretRange.startOffset);
   range.deleteContents();
   range.insertNode(document.createTextNode(`@${name} `));
   range.collapse(false);
   selection.removeAllRanges();
   selection.addRange(range);
-  document.getElementById('mentionSuggestions').classList.remove('open');
+  document.getElementById(suggestionsId).classList.remove('open');
   editor.focus();
+}
+
+function handleTextMentionInput(event, inputId, suggestionsId) {
+  const input = document.getElementById(inputId);
+  const container = document.getElementById(suggestionsId);
+  const beforeCursor = input.value.slice(0, input.selectionStart);
+  const match = beforeCursor.match(/(?:^|\s)@([^\s@]*)$/);
+  if (!match) {
+    container.classList.remove('open');
+    return;
+  }
+
+  const query = match[1].toLowerCase();
+  const matches = MENTION_USERS.filter(user => user.name.toLowerCase().includes(query));
+  mentionSelectionIndex = 0;
+  container.innerHTML = matches.length ? matches.map((user, index) => `
+    <button type="button" class="mention-option ${index === 0 ? 'active' : ''}" data-user-index="${MENTION_USERS.indexOf(user)}">
+      <strong>@${esc(user.name)}</strong><small>${esc(user.area)} · ${esc(user.email)}</small>
+    </button>
+  `).join('') : '<div class="empty-state" style="padding:8px 10px;">Nenhuma pessoa encontrada.</div>';
+  container.querySelectorAll('.mention-option').forEach(option => {
+    option.addEventListener('mousedown', clickEvent => {
+      clickEvent.preventDefault();
+      insertTextMention(input, container, MENTION_USERS[Number(option.dataset.userIndex)]);
+    });
+  });
+  container.classList.add('open');
+}
+
+function handleTextMentionKeydown(event, inputId, suggestionsId) {
+  const container = document.getElementById(suggestionsId);
+  if (container.classList.contains('open')) {
+    const options = [...container.querySelectorAll('.mention-option')];
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      if (!options.length) return;
+      mentionSelectionIndex = (mentionSelectionIndex + (event.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length;
+      options.forEach((option, index) => option.classList.toggle('active', index === mentionSelectionIndex));
+      return;
+    }
+    if (event.key === 'Enter' && options.length) {
+      event.preventDefault();
+      const input = document.getElementById(inputId);
+      const user = MENTION_USERS[Number(options[mentionSelectionIndex].dataset.userIndex)];
+      insertTextMention(input, container, user);
+      return;
+    }
+    if (event.key === 'Escape') {
+      container.classList.remove('open');
+      return;
+    }
+  }
+}
+
+function insertTextMention(input, container, user) {
+  if (!user) return;
+  const cursor = input.selectionStart;
+  const beforeCursor = input.value.slice(0, cursor);
+  const match = beforeCursor.match(/(?:^|\s)@[^\s@]*$/);
+  if (!match) return;
+  const start = cursor - match[0].length + (match[0].startsWith(' ') ? 1 : 0);
+  const mention = `@${user.name} `;
+  input.value = `${input.value.slice(0, start)}${mention}${input.value.slice(cursor)}`;
+  const nextCursor = start + mention.length;
+  input.setSelectionRange(nextCursor, nextCursor);
+  container.classList.remove('open');
+  input.focus();
 }
 
 function extractMentions(text) {
@@ -1335,7 +1690,7 @@ function addComment() {
     const dateStr = now.toLocaleDateString('pt-BR') + ', ' + now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     
     const newComment = {
-      author: "Usuário Atual",
+      author: currentUserName(),
       date: dateStr,
       text: html,
       mentions: extractMentions(text)
@@ -1450,7 +1805,7 @@ function saveActionFromModal() {
     dueDate: document.getElementById('modalDueDate').value,
     responsible: resp,
     completed: false,
-    createdBy: CURRENT_USER,
+    createdBy: currentUserName(),
     createdAt: formatDateTime(new Date())
   };
 
@@ -1459,11 +1814,14 @@ function saveActionFromModal() {
     if (!card) return;
     if (!card.actions) card.actions = [];
     card.actions.push(newAction);
-    addHistory(card, `Plano de ação criado: ${newAction.title} · Responsável: ${newAction.responsible}`, CURRENT_USER, newAction.createdAt);
+    addHistory(card, `Plano de ação criado: ${newAction.title} · Responsável: ${newAction.responsible}`, currentUserName(), newAction.createdAt);
+    syncCardStatusWithActions(card);
     if (card.mirrorGroupId) {
       cards.forEach(c => {
         if (c.mirrorGroupId === card.mirrorGroupId) {
           c.actions = card.actions;
+          c.status = card.status;
+          c.inProgressSince = card.inProgressSince;
         }
       });
     }
@@ -1533,7 +1891,7 @@ function openForm(id = null) {
   document.getElementById('fArea').disabled = Boolean(id);
   document.getElementById('fSubarea').value = card?.subarea || '';
   renderSubareaOptions();
-  document.getElementById('fCreator').value = card?.creator || CURRENT_USER;
+  document.getElementById('fCreator').value = card?.creator || window.COMGESTOR_SESSION?.usuario?.email || '';
   document.getElementById('fUrgencia').value = card?.urgencia || 'Não';
   document.getElementById('fVisibility').value = card?.visibility || 'area';
   document.getElementById('fSelectedUsers').value = card?.selectedUsers || '';
@@ -1589,8 +1947,23 @@ function saveCard() {
   const cardArea = currentCard?.area || document.getElementById('fArea').value;
   const createdArea = currentCard ? (currentCard.createdArea || getCardOriginArea(currentCard)) : cardArea;
   const colorArea = currentCard ? getCardOriginArea(currentCard) : cardArea;
-  const creator = document.getElementById('fCreator').value.trim();
-  if (!creator) { toast('Informe quem criou o card.'); return; }
+  const creator = currentCard?.creator || window.COMGESTOR_SESSION?.usuario?.email || '';
+  if (!creator) { toast('Não foi possível identificar o e-mail da sessão atual.'); return; }
+  const visibility = document.getElementById('fVisibility').value;
+  let selectedUsers = document.getElementById('fSelectedUsers').value;
+  if (visibility === 'selected') {
+    const requestedNames = selectedUsers.split(',').map(name => name.trim().replace(/^@/, '')).filter(Boolean);
+    if (!requestedNames.length) {
+      toast('Mencione ao menos uma pessoa com acesso ao ComGestor.');
+      return;
+    }
+    const recipients = requestedNames.map(name => MENTION_USERS.find(user => user.name.toLowerCase() === name.toLowerCase()));
+    if (recipients.some(user => !user)) {
+      toast('Selecione as pessoas pelas sugestões de usuários com acesso ao ComGestor.');
+      return;
+    }
+    selectedUsers = [...new Map(recipients.map(user => [user.email, `@${user.name}`])).values()].join(', ');
+  }
 
   const finalStatus = id ? currentCard.status : 'A Fazer';
 
@@ -1607,8 +1980,8 @@ function saveCard() {
     urgencia: document.getElementById('fUrgencia').value,
     risco: currentCard?.risco || '',
     esforco: currentCard?.esforco || '',
-    visibility: document.getElementById('fVisibility').value,
-    selectedUsers: document.getElementById('fSelectedUsers').value,
+    visibility,
+    selectedUsers,
     sharedWith: currentCard?.sharedWith || (document.getElementById('fVisibility').value === 'area' ? 'Equipe' : document.getElementById('fSelectedUsers').value),
     actions: currentCard?.actions || [],
     status: finalStatus,
@@ -1715,7 +2088,7 @@ function handleDrop(e, targetStatus) {
       draggedCardId = null;
       return;
     }
-    if (targetStatus === 'Concluídos' && card.creator !== CURRENT_USER) {
+    if (targetStatus === 'Concluídos' && card.creator !== currentUserEmail() && card.creator !== currentUserName()) {
       toast(`Somente ${card.creator || 'quem criou o card'} pode concluir este card.`);
       draggedCardId = null;
       return;
@@ -1741,7 +2114,7 @@ function handleDrop(e, targetStatus) {
   draggedCardId = null;
 }
 
-function addHistory(card, text, author = CURRENT_USER, date = formatDateTime(new Date())) {
+function addHistory(card, text, author = currentUserName(), date = formatDateTime(new Date())) {
   if (!card.history) card.history = [];
   card.history.push({ text, author, date });
 }
@@ -2035,7 +2408,10 @@ async function iniciarAplicacaoProtegida() {
   try {
     const sessao = await window.ComGestorConvex.minhaSessao();
     window.COMGESTOR_SESSION = sessao;
-    MENTION_USERS = sessao.usuarios || [];
+    MENTION_USERS = (sessao.usuarios || []).map(user => ({
+      ...user,
+      name: user.name || user.nome
+    }));
     const dadosLocais = readStoredJSON('converge_v4_cards', []);
     const cardsRemotos = await window.ComGestorConvex.listarCards(sessao.quadros);
     cards = cardsRemotos.length
@@ -2060,6 +2436,7 @@ async function iniciarAplicacaoProtegida() {
     if (areasDisponiveis().includes(sessao.quadro.nome)) currentArea = sessao.quadro.nome;
     document.body.classList.remove('auth-pending');
     init();
+    startMentionRefresh();
     if (!cardsRemotos.length && cards.some(card => !card._convexId)) {
       toast('Salvando cards locais permitidos no Convex...');
       for (const card of cards) persistCardToConvex(card);

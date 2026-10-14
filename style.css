@@ -89,6 +89,8 @@ button { cursor: pointer; }
 .nav button#btnSettings.active { background: #0ea5e9 !important;
    box-shadow: 0 4px 12px rgba(14, 165, 233, 0.3);
    }
+.nav button .nav-badge { margin-left: auto; min-width: 19px; height: 19px; padding: 0 5px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; background: #ef4444; color: #fff; font-size: 11px; font-weight: 800; line-height: 1; }
+.nav button .nav-badge[hidden] { display: none; }
 
 .main { margin-left: 240px;
    width: calc(100% - 240px);
@@ -289,7 +291,7 @@ button { cursor: pointer; }
 .card-detail-modal {
   position: fixed;
   top: 50%;
-  left: 50%;
+  left: calc(50% + 120px);
   transform: translate(-50%, -50%);
   width: min(1440px, calc(100vw - 32px));
   height: min(920px, calc(100vh - 32px));
@@ -367,8 +369,21 @@ button { cursor: pointer; }
 .history-item { border-left: 3px solid var(--primary); background: #fff; padding: 11px 13px; font-size: 13px; overflow-wrap: anywhere; line-height: 1.45; }
 .history-item span { display: block; color: var(--muted); margin-top: 3px; }
 .empty-state { color: var(--muted); font-size: 13px; }
-.my-actions-panel { background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; max-width: 760px; }
+.my-actions-panel { width: 100%; min-width: 0; background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; }
+.my-actions-toolbar { display: flex; justify-content: flex-end; gap: 6px; margin-bottom: 16px; }
+.my-actions-view-button { border: 1px solid var(--line); border-radius: 7px; background: #fff; color: var(--muted); padding: 7px 10px; font-size: 12px; font-weight: 600; }
+.my-actions-view-button.active { border-color: var(--primary); background: #eff6ff; color: var(--primary); }
+.my-actions-section + .my-actions-section { margin-top: 20px; }
+.my-actions-panel .my-actions-section .col-head { margin-top: 0 !important; }
+.my-actions-items { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); gap: 8px; }
+.my-actions-items > .empty-state { grid-column: 1 / -1; margin: 4px 0 0; }
+.my-actions-panel[data-layout="list"] .my-actions-items { display: flex; flex-direction: column; gap: 0; }
 .my-action-row { width: 100%; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2); padding: 12px; margin-top: 8px; text-align: left; color: var(--text); }
+.my-actions-panel[data-layout="grid"] .my-action-row { margin-top: 0; height: 100%; }
+.my-actions-panel[data-layout="list"] .my-action-row { display: grid; grid-template-columns: minmax(180px, 1.2fr) minmax(160px, 1fr) minmax(130px, .7fr); align-items: center; gap: 8px 16px; border-radius: 0; border-width: 0 0 1px; background: #fff; margin: 0; padding: 12px 8px; }
+.my-actions-panel[data-layout="list"] .my-action-row:first-of-type { border-top: 1px solid var(--line); }
+.my-actions-panel[data-layout="list"] .my-action-row:hover { background: #eff6ff; }
+.my-actions-panel[data-layout="list"] .my-action-row > :last-child:nth-child(4) { grid-column: 1 / -1; }
 .my-action-row:hover { border-color: var(--primary); background: #eff6ff; }
 .my-action-row span, .my-action-row small { color: var(--muted); font-size: 11px; }
 
@@ -557,8 +572,10 @@ button { cursor: pointer; }
   .toolbar { flex-direction: column; align-items: stretch; }
   .toolbar .primary { width: 100%; }
   .board { grid-template-columns: repeat(5, minmax(230px, 1fr)); margin-top: 16px; }
+  .my-actions-panel[data-layout="list"] .my-action-row { grid-template-columns: 1fr; gap: 5px; }
 
   .card-detail-modal {
+    left: 50%;
     width: calc(100vw - 16px);
     height: calc(100vh - 16px);
   }
