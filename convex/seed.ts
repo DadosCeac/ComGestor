@@ -13,12 +13,19 @@ export const carregar = internalMutation({
       for (const item of d.quadros) quadrosPorCodigo.set(item.codigo, item);
 
       let usuariosAdicionados = 0;
+      let statusAtualizados = 0;
       for (const u of d.usuarios) {
         const existente = await ctx.db
           .query("usuarios")
           .withIndex("by_email", (q) => q.eq("email", u.email.toLowerCase()))
           .unique();
-        if (existente) continue;
+        if (existente) {
+          if (existente.ativo !== u.ativo) {
+            await ctx.db.patch(existente._id, { ativo: u.ativo });
+            statusAtualizados++;
+          }
+          continue;
+        }
 
         const organizacaoSeed = d.organizacoes.find((item) => item.codigo === u.organizacao);
         const organizacao = organizacoesExistentes.find((item) => item.nome === organizacaoSeed?.nome);
@@ -51,7 +58,7 @@ export const carregar = internalMutation({
         });
         usuariosAdicionados++;
       }
-      return `Já carregado — usuários adicionados: ${usuariosAdicionados}.`;
+      return `Já carregado — usuários adicionados: ${usuariosAdicionados}, status atualizados: ${statusAtualizados}.`;
     }
 
     const org = new Map<string, Id<"organizacoes">>();

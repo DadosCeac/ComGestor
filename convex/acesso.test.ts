@@ -20,7 +20,15 @@ test("seed + perfis por e-mail + escopos + visibilidade", async () => {
   );
   expect(usuarioThais).toBeDefined();
   await t.run((ctx) => ctx.db.delete(usuarioThais!._id));
-  expect(await t.mutation(internal.seed.carregar, {})).toContain("usuários adicionados: 1");
+  const usuarioEllen = await t.run((ctx) =>
+    ctx.db.query("usuarios").withIndex("by_email", (q) => q.eq("email", "ellen.fgomes@hc.fm.usp.br")).unique()
+  );
+  expect(usuarioEllen).toBeDefined();
+  await t.run((ctx) => ctx.db.patch(usuarioEllen!._id, { ativo: false }));
+  const resultadoSeed = await t.mutation(internal.seed.carregar, {});
+  expect(resultadoSeed).toContain("usuários adicionados: 1");
+  expect(resultadoSeed).toContain("status atualizados: 1");
+  expect((await t.run((ctx) => ctx.db.get(usuarioEllen!._id)))?.ativo).toBe(true);
 
   const perfis: Record<string, string> = {
     "ellen.fgomes@hc.fm.usp.br": "ADMIN", "fernando.maia@hc.fm.usp.br": "GESTOR", "thais.v@hc.fm.usp.br": "USUARIO",
