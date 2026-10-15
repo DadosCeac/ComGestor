@@ -342,7 +342,7 @@ function render() {
 
   if (isMyActionsView) {
     const actions = cards.flatMap(card => (card.actions || []).filter(action =>
-      [currentUserName(), currentUserEmail(), 'Usuário Atual'].includes(action.responsible) && !action.completed
+      isCurrentUserResponsible(action.responsible) && !action.completed
     ).map(action => ({ card, action })));
     board.style.gridTemplateColumns = 'minmax(0, 1fr)';
     board.innerHTML = `
@@ -356,7 +356,7 @@ function render() {
         <div class="my-actions-items">${actions.length ? actions.map(({ card, action }) => `<button class="my-action-row" onclick="openCardDetailModal(${card.id})"><strong>${esc(action.title)}</strong><span>${esc(card.title)} · ${esc(card.area)}${card.subarea ? ` / ${esc(card.subarea)}` : ''}</span><small>Prazo: ${esc(action.dueDate)}</small></button>`).join('') : '<p class="empty-state">Nenhuma pendência atribuída a você.</p>'}</div>
         </div>
         <div class="my-actions-section">
-        <div class="col-head" style="margin-top:20px;"><span>MENÇÕES PARA VOCÊ</span><span class="count">${mentionCount}</span></div>
+        <div class="col-head" style="margin-top:20px;"><span>MENÇÕES E AVISOS PARA VOCÊ</span><span class="count">${mentionCount}</span></div>
         <div class="my-actions-items">${mentionCount ? mentions.map(item => `<button class="my-action-row" onclick="openMentionedCard(${item.card.id}, ${item.actionIndex ?? 'null'})"><strong>${esc(item.context)}</strong><span>${esc(item.card.title)} · ${esc(item.card.area)}${item.card.subarea ? ` / ${esc(item.card.subarea)}` : ''}</span><small>${esc(item.author || 'Usuário')} · ${esc(item.date || '')}</small><span>${esc(item.preview)}</span></button>`).join('') : '<p class="empty-state">Ninguém mencionou você ainda.</p>'}</div>
         </div>
       </div>`;
@@ -418,23 +418,28 @@ function updateMyActionsBadge(mentionCount) {
   badge.hidden = mentionCount === 0;
   button.setAttribute(
     'aria-label',
-    mentionCount ? `Minhas ações, ${mentionCount} ${mentionCount === 1 ? 'menção' : 'menções'} para você` : 'Minhas ações'
+    mentionCount ? `Minhas ações, ${mentionCount} ${mentionCount === 1 ? 'aviso' : 'avisos'} para você` : 'Minhas ações'
   );
 }
 
+function isCurrentUserResponsible(responsible) {
+  const normalizedResponsible = String(responsible || '').trim().replace(/^@/, '').toLocaleLowerCase();
+  return [
+    currentUserName(),
+    currentUserEmail(),
+    'Usuário Atual'
+  ].some(identifier => identifier.toLocaleLowerCase() === normalizedResponsible);
+}
+
+function containsMention(text, identifier) {
+  const escapedIdentifier = identifier.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const mentionPattern = new RegExp(`(?:^|[^\\p{L}\\p{N}_])@${escapedIdentifier}(?:$|[^\\p{L}\\p{N}_])`, 'iu');
+  return mentionPattern.test(stripMarkup(text));
+}
+
 function textMentionsCurrentUser(text) {
-  const normalizedText = stripMarkup(text).toLocaleLowerCase();
   const identifiers = [currentUserName(), currentUserEmail()].filter(Boolean);
-  return identifiers.some(identifier => {
-    const mention = `@${identifier}`.toLocaleLowerCase();
-    let position = normalizedText.indexOf(mention);
-    while (position !== -1) {
-      const nextCharacter = normalizedText[position + mention.length] || '';
-      if (!/[\p{L}\p{N}_]/u.test(nextCharacter)) return true;
-      position = normalizedText.indexOf(mention, position + mention.length);
-    }
-    return false;
-  });
+  return identifiers.some(identifier => containsMention(text, identifier));
 }
 
 function commentMentionsCurrentUser(comment) {
@@ -495,6 +500,16 @@ function getCurrentUserMentions() {
     (card.actions || []).forEach((action, actionIndex) => {
       if (action.completed) return;
 
+      if (isCurrentUserResponsible(action.responsible)) {
+        mentions.push({
+          card,
+          actionIndex,
+          context: 'Ação atribuída a você',
+          preview: action.title,
+          author: displayHistoryAuthor(action.createdBy),
+          date: action.createdAt
+        });
+      }
       if (textMentionsCurrentUser(action.title)) {
         mentions.push({
           card,
@@ -518,7 +533,18 @@ function getCurrentUserMentions() {
       });
     });
   });
-  return mentions;
+  return [...new Map(mentions.map(item => [mentionNotificationKey(item), item])).values()];
+}
+
+function mentionNotificationKey(item) {
+  return JSON.stringify([
+    item.card._convexId || item.card.id,
+    item.actionIndex,
+    item.context,
+    item.author,
+    item.date,
+    item.preview
+  ]);
 }
 
 function openMentionedCard(cardId, actionIndex = null) {
@@ -563,6 +589,7 @@ async function refreshCardsForMentions() {
 
     const refreshedSnapshot = JSON.stringify(refreshedCards);
     if (refreshedSnapshot === JSON.stringify(cards)) return;
+    const previousMentionKeys = new Set(getCurrentUserMentions().map(mentionNotificationKey));
     cards = refreshedCards;
     persistedCardSnapshots.clear();
     queuedCardSnapshots.clear();
@@ -575,6 +602,12 @@ async function refreshCardsForMentions() {
       console.warn('Não foi possível atualizar o cache local dos cards.', error);
     }
     render();
+    const newMentions = getCurrentUserMentions().filter(mention =>
+      !previousMentionKeys.has(mentionNotificationKey(mention))
+    );
+    if (newMentions.length) {
+      toast(`Você recebeu ${newMentions.length} ${newMentions.length === 1 ? 'aviso novo' : 'avisos novos'}. Veja em Minhas ações.`);
+    }
   } catch (error) {
     console.warn('Não foi possível atualizar as menções recebidas.', error);
   } finally {
@@ -1505,7 +1538,7 @@ function insertTextMention(input, container, user) {
 }
 
 function extractMentions(text) {
-  return MENTION_USERS.filter(user => text.includes(`@${user.name}`)).map(user => ({
+  return MENTION_USERS.filter(user => containsMention(text, user.name)).map(user => ({
     name: user.name,
     email: user.email,
     area: user.area,

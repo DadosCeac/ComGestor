@@ -228,7 +228,13 @@
   <div class="form">
     <input type="hidden" id="cardId">
 
-    <div class="field"><label>Título do Card *</label><input id="fTitle" placeholder="Informe o título principal do card"></div>
+    <div class="field">
+      <label>Título do Card *</label>
+      <div class="mention-input-wrap">
+        <input id="fTitle" placeholder="Informe o título principal do card" oninput="handleTextMentionInput(event, 'fTitle', 'fTitleMentionSuggestions')" onkeydown="handleTextMentionKeydown(event, 'fTitle', 'fTitleMentionSuggestions')">
+        <div id="fTitleMentionSuggestions" class="mention-suggestions" role="listbox" aria-label="Pessoas para mencionar"></div>
+      </div>
+    </div>
     <div class="field">
       <label>Descrição</label>
       <div class="mention-input-wrap">
@@ -287,7 +293,7 @@
   </div>
 </aside>
 
-<div class="toast" id="toast"></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script src="./comgestor-client.js" defer></script>
 <script src="./script.js" defer></script>
