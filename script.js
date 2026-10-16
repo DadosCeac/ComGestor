@@ -806,7 +806,7 @@ function cardHTML(c, isArchived = false) {
         ${c.esforco ? `<span class="badge gray">Esforço: ${esc(c.esforco)}</span>` : ''}
         ${tagsHTML}
         ${c.subarea ? `<span class="badge gray">↳ ${esc(c.subarea)}</span>` : ''}
-        ${sharedAreas.length ? `<span class="badge mirrored">↗ ${esc(sharedAreas.join(', '))}</span>` : ''}
+        ${sharedAreas.length ? `<span class="badge mirrored">Compartilhado com a área: ${esc(sharedAreas.join(', '))}</span>` : ''}
         <span class="badge gray">Criado em: ${formatDate(c.createdAt)}</span>
         ${activeDays !== null ? `<span class="badge active-alert">⏱ ${activeDays} ${activeDays === 1 ? 'dia' : 'dias'} em andamento</span>` : ''}
         <span class="badge gray">☑ ${c.actions ? c.actions.length : 0} ações</span>
