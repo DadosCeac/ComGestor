@@ -3,6 +3,7 @@ const FALLBACK_AREA = AREAS[0];
 
 const AREA_COLORS = {
   "Assistencial": { color: "#ec4899", bg: "#fce7f3" },
+  "Operacional":  { color: "#f97316", bg: "#ffedd5" },
   "Administrativo": { color: "#3b82f6", bg: "#dbeafe" },
   "Diretoria":    { color: "#8b5cf6", bg: "#ede9fe" },
   "Ocupacional":  { color: "#10b981", bg: "#d1fae5" },
@@ -47,6 +48,7 @@ function currentUserEmail() {
 let currentArea = AREAS[0];
 let isArchivedView = false;
 let isMyActionsView = false;
+let isTimelineView = false;
 let myActionsLayout = 'grid';
 let cards = [];
 let tempActions = [];
@@ -240,24 +242,28 @@ function showMainBoard() {
 
 function showMainBoardUI() {
   isMyActionsView = false;
+  isTimelineView = false;
   document.getElementById('pageTitle').textContent = `Área ${currentArea}`;
   document.getElementById('areaSelectorContainer').style.display = 'block';
   document.getElementById('toolbar').style.display = 'flex';
   document.getElementById('btnMainBoard').classList.add('active');
   document.getElementById('btnArchived')?.classList.remove('active');
   document.getElementById('btnMyActions').classList.remove('active');
+  document.getElementById('btnTimeline').classList.remove('active');
   document.getElementById('btnSettings')?.classList.remove('active');
 }
 
 function showArchivedView() {
   isArchivedView = true;
   isMyActionsView = false;
+  isTimelineView = false;
   document.getElementById('pageTitle').textContent = 'Cards Arquivados (Suspenso por tempo indeterminado)';
   document.getElementById('areaSelectorContainer').style.display = 'none';
   document.getElementById('toolbar').style.display = 'none';
   document.getElementById('btnMainBoard').classList.remove('active');
   document.getElementById('btnArchived')?.classList.add('active');
   document.getElementById('btnMyActions').classList.remove('active');
+  document.getElementById('btnTimeline').classList.remove('active');
   document.getElementById('btnSettings')?.classList.remove('active');
   render();
 }
@@ -265,12 +271,29 @@ function showArchivedView() {
 function showMyActions() {
   isArchivedView = false;
   isMyActionsView = true;
+  isTimelineView = false;
   document.getElementById('pageTitle').textContent = 'Minhas ações';
   document.getElementById('areaSelectorContainer').style.display = 'none';
   document.getElementById('toolbar').style.display = 'none';
   document.getElementById('btnMainBoard').classList.remove('active');
   document.getElementById('btnArchived')?.classList.remove('active');
   document.getElementById('btnMyActions').classList.add('active');
+  document.getElementById('btnTimeline').classList.remove('active');
+  render();
+}
+
+function showTimeline() {
+  isArchivedView = false;
+  isMyActionsView = false;
+  isTimelineView = true;
+  document.getElementById('pageTitle').textContent = 'Linha do tempo';
+  document.getElementById('areaSelectorContainer').style.display = 'none';
+  document.getElementById('toolbar').style.display = 'none';
+  document.getElementById('btnMainBoard').classList.remove('active');
+  document.getElementById('btnArchived')?.classList.remove('active');
+  document.getElementById('btnMyActions').classList.remove('active');
+  document.getElementById('btnTimeline').classList.add('active');
+  document.getElementById('btnSettings')?.classList.remove('active');
   render();
 }
 
@@ -363,6 +386,11 @@ function render() {
     return;
   }
 
+  if (isTimelineView) {
+    renderTimeline(board);
+    return;
+  }
+
   if (isArchivedView) {
     board.style.gridTemplateColumns = 'repeat(5, minmax(200px, 1fr))';
     board.innerHTML = COLUMNS.map(col => {
@@ -402,6 +430,122 @@ function render() {
         </div>
       </div>`;
   }).join('');
+}
+
+function parseTimelineDate(value) {
+  const raw = String(value || '').trim();
+  const isoDate = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (isoDate) return `${isoDate[1]}-${isoDate[2]}-${isoDate[3]}`;
+  const brazilianDate = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if (brazilianDate) return `${brazilianDate[3]}-${brazilianDate[2]}-${brazilianDate[1]}`;
+  return '';
+}
+
+function timelineDateOrdinal(date) {
+  const [year, month, day] = date.split('-').map(Number);
+  return Math.floor(Date.UTC(year, month - 1, day) / 86400000);
+}
+
+function renderTimeline(board) {
+  const actions = cards.flatMap(card => (card.actions || []).map((action, index) => {
+    const startDate = parseTimelineDate(action.startDate) ||
+      parseTimelineDate(action.createdAt) ||
+      parseTimelineDate(card.createdAt);
+    if (!startDate) return null;
+    const dueDate = parseTimelineDate(action.dueDate) ||
+      addDays(startDate, Math.max(1, Number(action.days) || 1));
+    return { card, action, index, startDate, dueDate };
+  }).filter(Boolean));
+
+  board.style.gridTemplateColumns = 'minmax(0, 1fr)';
+  if (!actions.length) {
+    board.innerHTML = '<section class="timeline-empty"><h2>Nenhuma ação para exibir</h2><p>As ações cadastradas nos cards aparecerão aqui com as datas de início e conclusão previstas.</p></section>';
+    return;
+  }
+
+  const firstDate = Math.min(...actions.map(item => timelineDateOrdinal(item.startDate)));
+  const lastDate = Math.max(...actions.map(item => timelineDateOrdinal(item.dueDate)));
+  const start = new Date(firstDate * 86400000);
+  const end = new Date(lastDate * 86400000);
+  const rangeStart = Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1) / 86400000;
+  const rangeEnd = Date.UTC(end.getUTCFullYear(), end.getUTCMonth() + 1, 1) / 86400000;
+  const dayWidth = 28;
+  const totalDays = rangeEnd - rangeStart;
+  const timelineWidth = totalDays * dayWidth;
+  const months = [];
+  const dayLabels = [];
+  const todayOrdinal = timelineDateOrdinal(todayISO());
+  const todayOffset = (todayOrdinal - rangeStart) * dayWidth + dayWidth / 2;
+  const todayIsVisible = todayOrdinal >= rangeStart && todayOrdinal < rangeEnd;
+
+  for (let monthDate = new Date(rangeStart * 86400000); monthDate.getTime() < rangeEnd * 86400000;) {
+    const year = monthDate.getUTCFullYear();
+    const month = monthDate.getUTCMonth();
+    const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+    months.push(`<div class="timeline-month" style="width:${daysInMonth * dayWidth}px">${monthDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric', timeZone: 'UTC' })}</div>`);
+    for (let day = 1; day <= daysInMonth; day += 1) {
+      const date = new Date(Date.UTC(year, month, day));
+      const dateISO = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      const weekday = date.toLocaleDateString('pt-BR', { weekday: 'short', timeZone: 'UTC' }).replace('.', '');
+      const isWeekend = date.getUTCDay() === 0 || date.getUTCDay() === 6;
+      const isToday = dateISO === todayISO();
+      dayLabels.push(`<span class="timeline-day ${isWeekend ? 'weekend' : ''} ${isToday ? 'today' : ''}" style="width:${dayWidth}px"${isToday ? ' aria-label="Hoje"' : ''}><small>${weekday}</small><b>${day}</b></span>`);
+    }
+    monthDate = new Date(Date.UTC(year, month + 1, 1));
+  }
+
+  const timelineStyle = `width:${timelineWidth}px;--timeline-day-width:${dayWidth}px`;
+  const rows = actions.map(({ card, action, index, startDate, dueDate }) => {
+    const areaTheme = getAreaTheme(card.area);
+    const offset = (timelineDateOrdinal(startDate) - rangeStart) * dayWidth;
+    const duration = Math.max(1, timelineDateOrdinal(dueDate) - timelineDateOrdinal(startDate) + 1) * dayWidth;
+    return `
+      <div class="timeline-row">
+        <button type="button" class="timeline-action-label" style="--area-color:${areaTheme.color};--area-bg:${areaTheme.bg}" onclick="openTimelineAction(${card.id}, ${index})">
+          <strong>${esc(action.title)}</strong>
+          <span class="timeline-area"><i></i>${esc(card.area)} <span>· ${esc(card.title)}</span></span>
+          <small><b>Início</b> ${formatDate(startDate)} <span>→</span> <b>Previsto</b> ${formatDate(dueDate)}</small>
+        </button>
+        <div class="timeline-track ${todayIsVisible ? 'has-today' : ''}" style="${timelineStyle}${todayIsVisible ? `;--today-offset:${todayOffset}px` : ''}">
+          ${todayIsVisible ? '<span class="timeline-today-marker" aria-hidden="true"></span>' : ''}
+          <button type="button" class="timeline-bar ${action.completed ? 'completed' : ''}" style="left:${offset}px;width:${duration}px;--area-color:${areaTheme.color}" title="${esc(action.title)} · ${esc(card.area)} · ${formatDate(startDate)} – ${formatDate(dueDate)}" aria-label="Abrir ${esc(action.title)} no card ${esc(card.title)}" onclick="openTimelineAction(${card.id}, ${index})">
+            <span>${esc(action.title)}</span>
+          </button>
+        </div>
+      </div>`;
+  }).join('');
+
+  board.innerHTML = `
+    <section class="timeline-panel">
+      <div class="timeline-toolbar">
+        <div>
+          <h2>Planejamento das ações</h2>
+          <p>Compare os prazos por dia. Selecione uma ação para abrir o card correspondente.</p>
+        </div>
+        <span class="timeline-count">${actions.length} ${actions.length === 1 ? 'ação' : 'ações'}</span>
+      </div>
+      <div class="timeline-legend"><strong>Áreas</strong>${areasDisponiveis().map(area => {
+        const theme = getAreaTheme(area);
+        return `<span style="--area-color:${theme.color};--area-bg:${theme.bg}"><i></i>${esc(area)}</span>`;
+      }).join('')}</div>
+      <div class="timeline-scroll">
+        <div class="timeline-grid">
+          <div class="timeline-header">
+            <strong>Ação</strong>
+            <div class="timeline-calendar" style="${timelineStyle}">
+              <div class="timeline-months">${months.join('')}</div>
+              <div class="timeline-days">${dayLabels.join('')}</div>
+            </div>
+          </div>
+          ${rows}
+        </div>
+      </div>
+    </section>`;
+}
+
+function openTimelineAction(cardId, actionIndex) {
+  activeActionIndex = actionIndex;
+  openCardDetailModal(cardId);
 }
 
 function setMyActionsLayout(layout) {
