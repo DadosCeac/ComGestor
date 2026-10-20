@@ -42,9 +42,14 @@ test("seed + perfis por e-mail + escopos + visibilidade", async () => {
   const sessaoGestor = await (await logar(t, "fernando.maia@hc.fm.usp.br")).query(api.usuarios.minhaSessao, {});
   expect(sessaoGestor.perfil.codigo).toBe("GESTOR");
   expect(sessaoGestor.permissoes.CARD_CRIAR).toBe("QUADRO");
+  expect(sessaoGestor.permissoes.EVENTO_VISUALIZAR).toBe("QUADRO");
   expect(sessaoGestor.permissoes.USUARIO_GERENCIAR).toBeUndefined();
   expect(sessaoGestor.quadros.map((quadro: { nome: string }) => quadro.nome)).toEqual(["Assistencial"]);
   expect(sessaoGestor.usuarios.some((usuario: { email: string }) => usuario.email === "thais.v@hc.fm.usp.br")).toBe(true);
+
+  const sessaoUsuario = await (await logar(t, "thais.v@hc.fm.usp.br")).query(api.usuarios.minhaSessao, {});
+  expect(sessaoUsuario.perfil.codigo).toBe("USUARIO");
+  expect(sessaoUsuario.permissoes.EVENTO_VISUALIZAR).toBe("PROPRIO");
 
   const ger = await (await logar(t, "fernando.maia@hc.fm.usp.br")).run(async (ctx) => {
     const s = await usuarioAtual(ctx);

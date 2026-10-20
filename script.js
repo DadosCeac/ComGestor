@@ -283,6 +283,11 @@ function showMyActions() {
 }
 
 function showTimeline() {
+  if (!window.ComGestorConvex.temPermissao('EVENTO_VISUALIZAR')) {
+    window.ComGestorConvex.exigirPermissao('EVENTO_VISUALIZAR');
+    return;
+  }
+
   isArchivedView = false;
   isMyActionsView = false;
   isTimelineView = true;
