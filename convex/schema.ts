@@ -10,6 +10,7 @@ export default defineSchema({
     nome: v.string(),
     descricao: v.optional(v.string()),
     ativa: v.boolean(),
+    bloquear_migracao_cards_locais: v.optional(v.boolean()),
     criado_em: v.number(),
     atualizado_em: v.number(),
   }),

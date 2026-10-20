@@ -1,6 +1,7 @@
 // Exemplo de uso das regras de acesso: listar o quadro e criar card (modal "Novo Card").
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { internal } from "./_generated/api";
+import { internalMutation, mutation, query } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import {
@@ -145,6 +146,160 @@ export const listarPorQuadro = query({
         ...card,
         quadro_nome: (await ctx.db.get(card.quadro_id))?.nome ?? "",
       })));
+  },
+});
+
+const fasesLimpeza = [
+  "cards",
+  "anexos",
+  "comentarios",
+  "acoes",
+  "indicadores",
+  "card_tags",
+  "compartilhamentos",
+  "eventos",
+] as const;
+
+export const apagarTodos = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const sessao = await usuarioAtual(ctx);
+    if (sessao.perfil.codigo !== "ADMIN") {
+      throw new Error("Somente administradores podem apagar todos os cards.");
+    }
+
+    await ctx.db.patch(sessao.usuario.organizacao_id, {
+      bloquear_migracao_cards_locais: true,
+    });
+    const card = await ctx.db.query("cards").first();
+    if (!card) return { limpezaIniciada: false };
+
+    await ctx.scheduler.runAfter(0, internal.cards.apagarLote, {
+      card_id: card._id,
+      fase: "anexos",
+    });
+    return { limpezaIniciada: true };
+  },
+});
+
+export const apagarLote = internalMutation({
+  args: {
+    card_id: v.optional(v.id("cards")),
+    fase: v.union(
+      v.literal("cards"),
+      v.literal("anexos"),
+      v.literal("comentarios"),
+      v.literal("acoes"),
+      v.literal("indicadores"),
+      v.literal("card_tags"),
+      v.literal("compartilhamentos"),
+      v.literal("eventos"),
+    ),
+  },
+  handler: async (ctx, { card_id, fase }) => {
+    if (fase === "cards") {
+      const proximo = await ctx.db.query("cards").first();
+      if (!proximo) return;
+      await ctx.scheduler.runAfter(0, internal.cards.apagarLote, {
+        card_id: proximo._id,
+        fase: "anexos",
+      });
+      return;
+    }
+
+    if (!card_id || !(await ctx.db.get(card_id))) return;
+    const agendarFase = async (proximaFase: (typeof fasesLimpeza)[number]) => {
+      await ctx.scheduler.runAfter(0, internal.cards.apagarLote, {
+        card_id,
+        fase: proximaFase,
+      });
+    };
+
+    if (fase === "anexos") {
+      const anexos = await ctx.db.query("anexos")
+        .withIndex("by_card", (q) => q.eq("card_id", card_id))
+        .take(100);
+      for (const anexo of anexos) {
+        if (anexo.storage_key) await ctx.storage.delete(anexo.storage_key);
+        await ctx.db.delete(anexo._id);
+      }
+      await agendarFase(anexos.length === 100 ? "anexos" : "comentarios");
+      return;
+    }
+
+    if (fase === "comentarios") {
+      const comentarios = await ctx.db.query("comentarios")
+        .withIndex("by_card", (q) => q.eq("card_id", card_id))
+        .take(100);
+      for (const comentario of comentarios) await ctx.db.delete(comentario._id);
+      await agendarFase(comentarios.length === 100 ? "comentarios" : "acoes");
+      return;
+    }
+
+    if (fase === "acoes") {
+      const acao = await ctx.db.query("acoes")
+        .withIndex("by_card", (q) => q.eq("card_id", card_id))
+        .first();
+      if (!acao) {
+        await agendarFase("indicadores");
+        return;
+      }
+      const minhasAcoes = await ctx.db.query("minhas_acoes")
+        .withIndex("by_acao", (q) => q.eq("acao_id", acao._id))
+        .take(100);
+      for (const minhaAcao of minhasAcoes) await ctx.db.delete(minhaAcao._id);
+      if (minhasAcoes.length < 100) await ctx.db.delete(acao._id);
+      await agendarFase("acoes");
+      return;
+    }
+
+    if (fase === "indicadores") {
+      const indicador = await ctx.db.query("indicadores")
+        .withIndex("by_card", (q) => q.eq("card_id", card_id))
+        .first();
+      if (!indicador) {
+        await agendarFase("card_tags");
+        return;
+      }
+      const medicoes = await ctx.db.query("medicoes")
+        .withIndex("by_indicador_data", (q) => q.eq("indicador_id", indicador._id))
+        .take(100);
+      for (const medicao of medicoes) await ctx.db.delete(medicao._id);
+      if (medicoes.length < 100) await ctx.db.delete(indicador._id);
+      await agendarFase("indicadores");
+      return;
+    }
+
+    if (fase === "card_tags") {
+      const vinculos = await ctx.db.query("card_tags")
+        .withIndex("by_card_tag", (q) => q.eq("card_id", card_id))
+        .take(100);
+      for (const vinculo of vinculos) await ctx.db.delete(vinculo._id);
+      await agendarFase(vinculos.length === 100 ? "card_tags" : "compartilhamentos");
+      return;
+    }
+
+    if (fase === "compartilhamentos") {
+      const compartilhamentos = await ctx.db.query("compartilhamentos")
+        .withIndex("by_card", (q) => q.eq("card_id", card_id))
+        .take(100);
+      for (const compartilhamento of compartilhamentos) await ctx.db.delete(compartilhamento._id);
+      await agendarFase(compartilhamentos.length === 100 ? "compartilhamentos" : "eventos");
+      return;
+    }
+
+    if (fase === "eventos") {
+      const eventos = await ctx.db.query("eventos")
+        .withIndex("by_card_ocorrido", (q) => q.eq("card_id", card_id))
+        .take(100);
+      for (const evento of eventos) await ctx.db.delete(evento._id);
+      if (eventos.length === 100) {
+        await agendarFase("eventos");
+        return;
+      }
+      await ctx.db.delete(card_id);
+      await ctx.scheduler.runAfter(0, internal.cards.apagarLote, { fase: "cards" });
+    }
   },
 });
 

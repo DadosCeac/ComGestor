@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import schema from "./schema";
 import { api, internal } from "./_generated/api";
 import { escopoDe, usuarioAtual } from "./lib/acesso";
@@ -169,4 +169,141 @@ expect(await titulos("ellen.fgomes@hc.fm.usp.br")).toEqual([
 
   // usuário comum não cria card em quadro alheio
   await expect(thais.mutation(api.cards.criar, { ...base, quadro_id: adm, titulo: "X", visibilidade: "EQUIPE_INTEIRA" })).rejects.toThrow(/seu quadro/);
+});
+
+test("somente admin apaga todos os cards e dados vinculados", async () => {
+  const t = convexTest(schema, modules);
+  await t.mutation(internal.seed.carregar, {});
+
+  const { cardId, tagId, usuarioId, organizacaoId } = await t.run(async (ctx) => {
+    const usuario = await ctx.db.query("usuarios")
+      .withIndex("by_email", (q) => q.eq("email", "thais.v@hc.fm.usp.br"))
+      .unique();
+    const status = await ctx.db.query("status")
+      .withIndex("by_codigo", (q) => q.eq("codigo", "A_FAZER"))
+      .unique();
+    expect(usuario).toBeDefined();
+    expect(status).toBeDefined();
+
+    const agora = Date.now();
+    const tagId = await ctx.db.insert("tags", {
+      organizacao_id: usuario!.organizacao_id,
+      nome: "Tag para limpeza",
+      criado_em: agora,
+    });
+    const cardId = await ctx.db.insert("cards", {
+      organizacao_id: usuario!.organizacao_id,
+      quadro_id: (await ctx.db.get(usuario!.area_id))!.quadro_id,
+      origin_quadro_id: (await ctx.db.get(usuario!.area_id))!.quadro_id,
+      criado_por_id: usuario!._id,
+      titulo: "Card para limpeza",
+      urgente: false,
+      visibilidade: "EQUIPE_INTEIRA",
+      status_id: status!._id,
+      suspenso_indeterminado: false,
+      ordem: 1,
+      criado_em: agora,
+      atualizado_em: agora,
+    });
+    const acaoId = await ctx.db.insert("acoes", {
+      card_id: cardId,
+      criado_por_id: usuario!._id,
+      titulo: "Ação para limpeza",
+      status_id: status!._id,
+      ordem: 1,
+      criado_em: agora,
+      atualizado_em: agora,
+    });
+    const indicadorId = await ctx.db.insert("indicadores", {
+      card_id: cardId,
+      nome: "Indicador para limpeza",
+      criado_em: agora,
+      atualizado_em: agora,
+    });
+    const comentarioId = await ctx.db.insert("comentarios", {
+      card_id: cardId,
+      autor_id: usuario!._id,
+      texto: "Comentário para limpeza",
+      criado_em: agora,
+    });
+    await ctx.db.insert("minhas_acoes", {
+      usuario_id: usuario!._id,
+      acao_id: acaoId,
+      papel: "RESPONSAVEL",
+      visualizada: false,
+      arquivada: false,
+    });
+    await ctx.db.insert("comentarios", {
+      card_id: cardId,
+      acao_id: acaoId,
+      autor_id: usuario!._id,
+      texto: "Comentário da ação",
+      criado_em: agora,
+    });
+    await ctx.db.insert("anexos", {
+      card_id: cardId,
+      comentario_id: comentarioId,
+      tipo: "LINK",
+      nome: "Anexo para limpeza",
+      url_externa: "https://example.com",
+      enviado_por_id: usuario!._id,
+      criado_em: agora,
+    });
+    await ctx.db.insert("card_tags", { card_id: cardId, tag_id: tagId });
+    await ctx.db.insert("compartilhamentos", {
+      card_id: cardId,
+      tipo_destino: "USUARIO",
+      usuario_id: usuario!._id,
+      nivel_acesso: "LEITURA",
+      criado_por_id: usuario!._id,
+      criado_em: agora,
+    });
+    await ctx.db.insert("medicoes", {
+      indicador_id: indicadorId,
+      valor: 1,
+      medido_em: agora,
+      registrado_por_id: usuario!._id,
+    });
+    await ctx.db.insert("eventos", {
+      card_id: cardId,
+      tipo_evento: "CARD_CRIADO",
+      descricao: "Card para limpeza",
+      ocorrido_em: agora,
+    });
+    return { cardId, tagId, usuarioId: usuario!._id, organizacaoId: usuario!.organizacao_id };
+  });
+
+  await expect(
+    (await logar(t, "thais.v@hc.fm.usp.br")).mutation(api.cards.apagarTodos, {})
+  ).rejects.toThrow(/somente administradores/i);
+
+  const admin = await logar(t, "ellen.fgomes@hc.fm.usp.br");
+  expect((await admin.query(api.usuarios.minhaSessao, {})).migracao_cards_locais_permitida).toBe(true);
+  vi.useFakeTimers();
+  try {
+    expect(await admin.mutation(api.cards.apagarTodos, {})).toEqual({ limpezaIniciada: true });
+    await t.finishAllScheduledFunctions(() => vi.runAllTimers());
+  } finally {
+    vi.useRealTimers();
+  }
+
+  await t.run(async (ctx) => {
+    expect(await ctx.db.get(cardId)).toBeNull();
+    expect(await ctx.db.query("cards").collect()).toHaveLength(0);
+    expect(await ctx.db.query("acoes").collect()).toHaveLength(0);
+    expect(await ctx.db.query("minhas_acoes").collect()).toHaveLength(0);
+    expect(await ctx.db.query("comentarios").collect()).toHaveLength(0);
+    expect(await ctx.db.query("anexos").collect()).toHaveLength(0);
+    expect(await ctx.db.query("card_tags").collect()).toHaveLength(0);
+    expect(await ctx.db.get(tagId)).toBeDefined();
+    expect(await ctx.db.query("compartilhamentos").collect()).toHaveLength(0);
+    expect(await ctx.db.query("indicadores").collect()).toHaveLength(0);
+    expect(await ctx.db.query("medicoes").collect()).toHaveLength(0);
+    expect(await ctx.db.query("eventos").collect()).toHaveLength(0);
+    expect(await ctx.db.get(usuarioId)).toBeDefined();
+    expect(await ctx.db.get(organizacaoId)).toMatchObject({
+      bloquear_migracao_cards_locais: true,
+    });
+  });
+  expect((await admin.query(api.usuarios.minhaSessao, {})).migracao_cards_locais_permitida).toBe(false);
 });

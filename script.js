@@ -780,6 +780,7 @@ function cardHTML(c, isArchived = false) {
     .split(',')
     .map(area => area.trim())
     .filter(Boolean);
+  const sharedAreasLabel = sharedAreas.join(', ');
 
   const cardArea = normalizeArea(c.area);
 
@@ -806,7 +807,7 @@ function cardHTML(c, isArchived = false) {
         ${c.esforco ? `<span class="badge gray">Esforço: ${esc(c.esforco)}</span>` : ''}
         ${tagsHTML}
         ${c.subarea ? `<span class="badge gray">↳ ${esc(c.subarea)}</span>` : ''}
-        ${sharedAreas.length ? `<span class="badge mirrored">Compartilhado com a área: ${esc(sharedAreas.join(', '))}</span>` : ''}
+        ${sharedAreas.length ? `<span class="badge mirrored" title="Compartilhado com a área: ${esc(sharedAreasLabel)}">Compartilhado com a área: ${esc(sharedAreasLabel)}</span>` : ''}
         <span class="badge gray">Criado em: ${formatDate(c.createdAt)}</span>
         ${activeDays !== null ? `<span class="badge active-alert">⏱ ${activeDays} ${activeDays === 1 ? 'dia' : 'dias'} em andamento</span>` : ''}
         <span class="badge gray">☑ ${c.actions ? c.actions.length : 0} ações</span>
@@ -2591,9 +2592,12 @@ async function iniciarAplicacaoProtegida() {
     }));
     const dadosLocais = readStoredJSON('converge_v4_cards', []);
     const cardsRemotos = await window.ComGestorConvex.listarCards(sessao.quadros);
+    const migrarCardsLocais = sessao.migracao_cards_locais_permitida !== false;
     cards = cardsRemotos.length
       ? cardsRemotos
-      : dadosLocais.filter(card => sessao.quadros.some(quadro => quadro.nome === card.area));
+      : migrarCardsLocais
+        ? dadosLocais.filter(card => sessao.quadros.some(quadro => quadro.nome === card.area))
+        : [];
     persistedCardSnapshots.clear();
     queuedCardSnapshots.clear();
     for (const card of cards) {
@@ -2614,7 +2618,7 @@ async function iniciarAplicacaoProtegida() {
     document.body.classList.remove('auth-pending');
     init();
     startMentionRefresh();
-    if (!cardsRemotos.length && cards.some(card => !card._convexId)) {
+    if (migrarCardsLocais && !cardsRemotos.length && cards.some(card => !card._convexId)) {
       toast('Salvando cards locais permitidos no Convex...');
       for (const card of cards) persistCardToConvex(card);
     }

@@ -5,9 +5,10 @@ export const minhaSessao = query({
   args: {},
   handler: async (ctx) => {
     const sessao = await usuarioAtual(ctx);
-    const [area, quadro, vinculos] = await Promise.all([
+    const [area, quadro, organizacao, vinculos] = await Promise.all([
       ctx.db.get(sessao.usuario.area_id),
       ctx.db.get(sessao.quadro_id),
+      ctx.db.get(sessao.usuario.organizacao_id),
       ctx.db
         .query("perfil_permissoes")
         .withIndex("by_perfil_permissao", (q) => q.eq("perfil_id", sessao.perfil._id))
@@ -62,6 +63,7 @@ export const minhaSessao = query({
 
     return {
       usuario: { nome: sessao.usuario.nome, email: sessao.usuario.email },
+      migracao_cards_locais_permitida: organizacao?.bloquear_migracao_cards_locais !== true,
       perfil: { codigo: sessao.perfil.codigo, nome: sessao.perfil.nome },
       area: { macroarea: area.macroarea, setor: area.setor },
       quadro: { nome: quadro.nome },
