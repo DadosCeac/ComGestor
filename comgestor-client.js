@@ -125,6 +125,26 @@
     });
   }
 
+  async function listarSugestoes() {
+    return callConvex("query", "sugestoes:listar", {});
+  }
+
+  async function criarSugestao(texto) {
+    return callConvex("mutation", "sugestoes:criar", { texto });
+  }
+
+  async function comentarSugestao(sugestaoId, texto) {
+    return callConvex("mutation", "sugestoes:comentar", { sugestao_id: sugestaoId, texto });
+  }
+
+  async function alternarCurtidaSugestao(sugestaoId) {
+    return callConvex("mutation", "sugestoes:alternarCurtida", { sugestao_id: sugestaoId });
+  }
+
+  async function responderPesquisaSatisfacao(nota) {
+    return callConvex("mutation", "sugestoes:responderPesquisa", { nota });
+  }
+
   function temPermissao(codigo) {
     return Object.prototype.hasOwnProperty.call(
       window.COMGESTOR_SESSION?.permissoes || {},
@@ -142,10 +162,15 @@
 
   window.ComGestorConvex = {
     callConvex,
+    alternarCurtidaSugestao,
+    comentarSugestao,
+    criarSugestao,
     exigirPermissao,
     listarCards,
+    listarSugestoes,
     minhaSessao,
     persistirCard,
+    responderPesquisaSatisfacao,
     compartilharCard,
     temPermissao,
     transferirCard,

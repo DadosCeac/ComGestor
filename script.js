@@ -49,8 +49,15 @@ let currentArea = AREAS[0];
 let isArchivedView = false;
 let isMyActionsView = false;
 let isTimelineView = false;
+let isSuggestionView = false;
 let myActionsLayout = 'grid';
 let cards = [];
+let suggestionData = null;
+let suggestionLoadError = false;
+let suggestionLoadErrorMessage = '';
+let selectedSatisfactionScore = null;
+let suggestionComposerOpen = false;
+let activeUserSubtitle = '';
 let tempActions = [];
 let pendingActionTitle = '';
 let pendingActionContext = 'drawer';
@@ -243,13 +250,17 @@ function showMainBoard() {
 function showMainBoardUI() {
   isMyActionsView = false;
   isTimelineView = false;
+  isSuggestionView = false;
+  document.getElementById('activeUserProfile').textContent = activeUserSubtitle;
   document.getElementById('pageTitle').textContent = `Área ${currentArea}`;
   document.getElementById('areaSelectorContainer').style.display = 'block';
   document.getElementById('toolbar').style.display = 'flex';
+  document.getElementById('suggestionToolbar').hidden = true;
   document.getElementById('btnMainBoard').classList.add('active');
   document.getElementById('btnArchived')?.classList.remove('active');
   document.getElementById('btnMyActions').classList.remove('active');
   document.getElementById('btnTimeline').classList.remove('active');
+  document.getElementById('btnSuggestions').classList.remove('active');
   document.getElementById('btnSettings')?.classList.remove('active');
 }
 
@@ -257,13 +268,17 @@ function showArchivedView() {
   isArchivedView = true;
   isMyActionsView = false;
   isTimelineView = false;
+  isSuggestionView = false;
+  document.getElementById('activeUserProfile').textContent = activeUserSubtitle;
   document.getElementById('pageTitle').textContent = 'Cards Arquivados (Suspenso por tempo indeterminado)';
   document.getElementById('areaSelectorContainer').style.display = 'none';
   document.getElementById('toolbar').style.display = 'none';
+  document.getElementById('suggestionToolbar').hidden = true;
   document.getElementById('btnMainBoard').classList.remove('active');
   document.getElementById('btnArchived')?.classList.add('active');
   document.getElementById('btnMyActions').classList.remove('active');
   document.getElementById('btnTimeline').classList.remove('active');
+  document.getElementById('btnSuggestions').classList.remove('active');
   document.getElementById('btnSettings')?.classList.remove('active');
   render();
 }
@@ -272,13 +287,17 @@ function showMyActions() {
   isArchivedView = false;
   isMyActionsView = true;
   isTimelineView = false;
+  isSuggestionView = false;
+  document.getElementById('activeUserProfile').textContent = activeUserSubtitle;
   document.getElementById('pageTitle').textContent = 'Minhas ações';
   document.getElementById('areaSelectorContainer').style.display = 'none';
   document.getElementById('toolbar').style.display = 'none';
+  document.getElementById('suggestionToolbar').hidden = true;
   document.getElementById('btnMainBoard').classList.remove('active');
   document.getElementById('btnArchived')?.classList.remove('active');
   document.getElementById('btnMyActions').classList.add('active');
   document.getElementById('btnTimeline').classList.remove('active');
+  document.getElementById('btnSuggestions').classList.remove('active');
   render();
 }
 
@@ -291,15 +310,226 @@ function showTimeline() {
   isArchivedView = false;
   isMyActionsView = false;
   isTimelineView = true;
+  isSuggestionView = false;
+  document.getElementById('activeUserProfile').textContent = activeUserSubtitle;
   document.getElementById('pageTitle').textContent = 'Linha do tempo';
   document.getElementById('areaSelectorContainer').style.display = 'none';
   document.getElementById('toolbar').style.display = 'none';
+  document.getElementById('suggestionToolbar').hidden = true;
   document.getElementById('btnMainBoard').classList.remove('active');
   document.getElementById('btnArchived')?.classList.remove('active');
   document.getElementById('btnMyActions').classList.remove('active');
   document.getElementById('btnTimeline').classList.add('active');
+  document.getElementById('btnSuggestions').classList.remove('active');
   document.getElementById('btnSettings')?.classList.remove('active');
   render();
+}
+
+function showSuggestions() {
+  isArchivedView = false;
+  isMyActionsView = false;
+  isTimelineView = false;
+  isSuggestionView = true;
+  document.getElementById('pageTitle').textContent = 'Sugestão';
+  document.getElementById('activeUserProfile').textContent = 'Compartilhe suas ideias, sugestões e opiniões para melhorar nosso time e nossos processos.';
+  document.getElementById('areaSelectorContainer').style.display = 'none';
+  document.getElementById('toolbar').style.display = 'none';
+  document.getElementById('suggestionToolbar').hidden = false;
+  document.getElementById('btnMainBoard').classList.remove('active');
+  document.getElementById('btnArchived')?.classList.remove('active');
+  document.getElementById('btnMyActions').classList.remove('active');
+  document.getElementById('btnTimeline').classList.remove('active');
+  document.getElementById('btnSuggestions').classList.add('active');
+  document.getElementById('btnSettings')?.classList.remove('active');
+  render();
+  refreshSuggestions();
+}
+
+async function refreshSuggestions() {
+  suggestionLoadError = false;
+  suggestionLoadErrorMessage = '';
+  if (isSuggestionView) render();
+  try {
+    suggestionData = await window.ComGestorConvex.listarSugestoes();
+    if (selectedSatisfactionScore === null && suggestionData.survey.minha_nota !== null) {
+      selectedSatisfactionScore = suggestionData.survey.minha_nota;
+    }
+    if (isSuggestionView) render();
+  } catch (error) {
+    console.error('Não foi possível carregar as sugestões e respostas de satisfação.', error);
+    suggestionLoadError = true;
+    suggestionLoadErrorMessage = error.message || 'O serviço de sugestões está indisponível.';
+    if (isSuggestionView) render();
+    toast('Não foi possível conectar à pesquisa de satisfação. Tente novamente.');
+  }
+}
+
+function renderSuggestions() {
+  const board = document.getElementById('board');
+  board.style.gridTemplateColumns = 'minmax(0, 1fr)';
+  if (suggestionLoadError) {
+    board.innerHTML = `
+      <div class="suggestion-error-state" role="alert">
+        <strong>Não foi possível carregar as sugestões.</strong>
+        <span>${esc(suggestionLoadErrorMessage)}</span>
+        <button class="primary" type="button" onclick="refreshSuggestions()">Tentar novamente</button>
+      </div>
+    `;
+    return;
+  }
+  if (!suggestionData) {
+    board.innerHTML = '<div class="suggestion-empty-state">Carregando sugestões e pesquisa de satisfação...</div>';
+    return;
+  }
+
+  const { items, survey } = suggestionData;
+  const search = document.getElementById('suggestionSearch').value.trim().toLocaleLowerCase('pt-BR');
+  const visibleItems = items.filter(item =>
+    !search || item.texto.toLocaleLowerCase('pt-BR').includes(search) ||
+      item.autor.toLocaleLowerCase('pt-BR').includes(search)
+  );
+  const average = survey.media === null ? 0 : survey.media;
+  const averagePercent = Math.round(average * 10);
+  const histogram = survey.notas.map((count, score) => `
+    <div class="satisfaction-distribution-row">
+      <span>${score}</span>
+      <div class="satisfaction-bar-track"><span style="width:${survey.total ? Math.round(count / survey.total * 100) : 0}%"></span></div>
+      <small>${count}</small>
+    </div>
+  `).join('');
+  const feed = visibleItems.length ? visibleItems.map(item => `
+    <article class="suggestion-post">
+      <div class="suggestion-avatar" aria-hidden="true">${esc(item.autor.split(/\s+/).map(part => part[0]).slice(0, 2).join('').toUpperCase())}</div>
+      <div class="suggestion-post-body">
+        <div class="suggestion-post-meta"><strong>${esc(item.autor)}</strong><time datetime="${new Date(item.criado_em).toISOString()}">${formatSuggestionDate(item.criado_em)}</time></div>
+        <p class="suggestion-post-text">${esc(item.texto)}</p>
+        <div class="suggestion-post-actions">
+          <button type="button" class="suggestion-action ${item.curtida_atual ? 'liked' : ''}" aria-pressed="${item.curtida_atual}" onclick="toggleSuggestionLike('${esc(item.id)}')">👍 <span>${item.curtidas}</span></button>
+          <span class="suggestion-comment-count">▢ ${item.comentarios.length} ${item.comentarios.length === 1 ? 'resposta' : 'respostas'}</span>
+        </div>
+        <div class="suggestion-comments">
+          ${item.comentarios.map(comment => `
+            <div class="suggestion-comment">
+              <strong>${esc(comment.autor)}</strong>
+              <time datetime="${new Date(comment.criado_em).toISOString()}">${formatSuggestionDate(comment.criado_em)}</time>
+              <p>${esc(comment.texto)}</p>
+            </div>
+          `).join('')}
+        </div>
+        <form class="suggestion-comment-form" onsubmit="submitSuggestionComment(event, '${esc(item.id)}')">
+          <input id="suggestion-comment-${esc(item.id)}" maxlength="1000" aria-label="Escreva uma resposta" placeholder="Escreva uma resposta...">
+          <button class="suggestion-send-button" type="submit" aria-label="Enviar resposta">➤</button>
+        </form>
+      </div>
+    </article>
+  `).join('') : '<p class="suggestion-empty-state">Nenhuma sugestão encontrada. Que tal compartilhar uma ideia?</p>';
+
+  board.innerHTML = `
+    <div class="suggestion-page">
+      <section class="satisfaction-card" aria-labelledby="satisfactionTitle">
+        <div class="satisfaction-heading">
+          <div>
+            <span class="eyebrow">Pesquisa de satisfação</span>
+            <h2 id="satisfactionTitle">De 0 a 10, o quanto você está satisfeito com nosso time e processos?</h2>
+            <p>Sua resposta é confidencial e entra apenas no resultado geral da organização.</p>
+          </div>
+          <div class="satisfaction-response-total"><strong>${survey.total}</strong><span>${survey.total === 1 ? 'resposta' : 'respostas'}</span></div>
+        </div>
+        <div class="satisfaction-content">
+          <div class="satisfaction-form">
+            <div class="satisfaction-score-picker" role="group" aria-label="Escolha uma nota de 0 a 10">
+              ${survey.notas.map((_, score) => `<button type="button" aria-pressed="${selectedSatisfactionScore === score}" class="${selectedSatisfactionScore === score ? 'selected' : ''}" onclick="selectSatisfactionScore(${score})">${score}</button>`).join('')}
+            </div>
+            <div class="satisfaction-score-labels"><span>Nada satisfeito</span><span>Muito satisfeito</span></div>
+            <div class="satisfaction-submit-row">
+              <span>${survey.minha_nota === null ? 'Você ainda não respondeu' : `Sua nota atual: ${survey.minha_nota}/10`}</span>
+              <button type="button" class="primary" onclick="submitSatisfactionScore()" ${selectedSatisfactionScore === null ? 'disabled' : ''}>${survey.minha_nota === null ? 'Enviar resposta' : 'Atualizar resposta'}</button>
+            </div>
+            <div class="satisfaction-distribution" aria-label="Distribuição das respostas por nota">${histogram}</div>
+          </div>
+          <div class="satisfaction-thermometer-panel">
+            <span class="satisfaction-thermometer-label">Termômetro da equipe</span>
+            <div class="satisfaction-thermometer">
+              <div class="thermometer-tube"><span class="thermometer-fill" style="height:${averagePercent}%"></span><strong>${survey.media === null ? '—' : average.toFixed(1).replace('.', ',')}</strong></div>
+              <div class="thermometer-bulb"><span style="height:${averagePercent}%"></span></div>
+            </div>
+            <strong class="thermometer-average">${survey.media === null ? 'Sem respostas' : `${average.toFixed(1).replace('.', ',')} / 10`}</strong>
+            <span class="thermometer-caption">média das avaliações</span>
+          </div>
+        </div>
+      </section>
+      <section class="suggestion-feed" aria-label="Sugestões da equipe">
+        <div class="suggestion-composer" id="suggestionComposer" ${suggestionComposerOpen ? '' : 'hidden'}>
+          <label for="suggestionText">Compartilhe uma ideia, sugestão ou comentário</label>
+          <textarea id="suggestionText" maxlength="2000" placeholder="O que podemos melhorar?"></textarea>
+          <div class="suggestion-composer-footer"><small>Até 2.000 caracteres</small><button class="primary" type="button" onclick="publishSuggestion()">Publicar sugestão</button></div>
+        </div>
+        <div class="suggestion-feed-list">${feed}</div>
+      </section>
+    </div>
+  `;
+}
+
+function formatSuggestionDate(timestamp) {
+  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(timestamp));
+}
+
+function selectSatisfactionScore(score) {
+  selectedSatisfactionScore = score;
+  render();
+}
+
+async function submitSatisfactionScore() {
+  if (selectedSatisfactionScore === null) return;
+  try {
+    await window.ComGestorConvex.responderPesquisaSatisfacao(selectedSatisfactionScore);
+    toast('Sua resposta foi registrada. Obrigado!');
+    await refreshSuggestions();
+  } catch (error) {
+    console.error('Não foi possível registrar a resposta da pesquisa de satisfação.', error);
+    toast(error.message || 'Não foi possível registrar sua resposta.');
+  }
+}
+
+function toggleSuggestionComposer() {
+  suggestionComposerOpen = !suggestionComposerOpen;
+  render();
+  if (suggestionComposerOpen) document.getElementById('suggestionText')?.focus();
+}
+
+async function publishSuggestion() {
+  const input = document.getElementById('suggestionText');
+  try {
+    await window.ComGestorConvex.criarSugestao(input.value);
+    suggestionComposerOpen = false;
+    toast('Sugestão publicada.');
+    await refreshSuggestions();
+  } catch (error) {
+    console.error('Não foi possível publicar a sugestão.', error);
+    toast(error.message || 'Não foi possível publicar a sugestão.');
+  }
+}
+
+async function toggleSuggestionLike(suggestionId) {
+  try {
+    await window.ComGestorConvex.alternarCurtidaSugestao(suggestionId);
+    await refreshSuggestions();
+  } catch (error) {
+    console.error('Não foi possível atualizar a curtida da sugestão.', error);
+    toast(error.message || 'Não foi possível atualizar a curtida.');
+  }
+}
+
+async function submitSuggestionComment(event, suggestionId) {
+  event.preventDefault();
+  const input = document.getElementById(`suggestion-comment-${suggestionId}`);
+  try {
+    await window.ComGestorConvex.comentarSugestao(suggestionId, input.value);
+    await refreshSuggestions();
+  } catch (error) {
+    console.error('Não foi possível enviar a resposta à sugestão.', error);
+    toast(error.message || 'Não foi possível enviar a resposta.');
+  }
 }
 
 function calculateProgress(actions) {
@@ -363,6 +593,10 @@ function getDeadlineStatus(actions, isCompletedCard) {
 
 function render() {
   const board = document.getElementById('board');
+  if (isSuggestionView) {
+    renderSuggestions();
+    return;
+  }
   const q = document.getElementById('search').value.toLowerCase();
   const mentions = getCurrentUserMentions();
   const mentionCount = mentions.length;
@@ -2612,7 +2846,8 @@ async function iniciarAplicacaoProtegida() {
     sessionStorage.removeItem('comgestor_token');
 
     const perfil = document.getElementById('activeUserProfile');
-    perfil.textContent = `${sessao.usuario.nome} · ${sessao.perfil.nome} · ${sessao.area.setor}`;
+    activeUserSubtitle = `${sessao.usuario.nome} · ${sessao.perfil.nome} · ${sessao.area.setor}`;
+    perfil.textContent = activeUserSubtitle;
 
     document.querySelectorAll('[data-requires-permission]').forEach(element => {
       const codigo = element.dataset.requiresPermission;

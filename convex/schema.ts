@@ -230,4 +230,33 @@ export default defineSchema({
   })
     .index("by_card_ocorrido", ["card_id", "ocorrido_em"])
     .index("by_acao", ["acao_id"]),
+
+  sugestoes: defineTable({
+    organizacao_id: v.id("organizacoes"),
+    autor_id: v.id("usuarios"),
+    texto: v.string(),
+    criado_em: v.number(),
+  }).index("by_organizacao", ["organizacao_id"]),
+
+  sugestao_comentarios: defineTable({
+    sugestao_id: v.id("sugestoes"),
+    autor_id: v.id("usuarios"),
+    texto: v.string(),
+    criado_em: v.number(),
+  }).index("by_sugestao", ["sugestao_id"]),
+
+  sugestao_curtidas: defineTable({
+    sugestao_id: v.id("sugestoes"),
+    usuario_id: v.id("usuarios"),
+    criado_em: v.number(),
+  })
+    .index("by_sugestao", ["sugestao_id"])
+    .index("by_sugestao_usuario", ["sugestao_id", "usuario_id"]),
+
+  respostas_satisfacao: defineTable({
+    organizacao_id: v.id("organizacoes"),
+    usuario_id: v.id("usuarios"),
+    nota: v.number(),
+    atualizado_em: v.number(),
+  }).index("by_organizacao_usuario", ["organizacao_id", "usuario_id"]),
 });

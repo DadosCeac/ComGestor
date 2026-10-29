@@ -30,6 +30,7 @@
       <button class="active" id="btnMainBoard" onclick="showMainBoard()">▦ <span>Quadros de Ação</span></button>
       <button id="btnMyActions" onclick="showMyActions()">✓ <span>Minhas ações</span><span id="myActionsBadge" class="nav-badge" aria-hidden="true" hidden></span></button>
       <button id="btnTimeline" data-requires-permission="EVENTO_VISUALIZAR" onclick="showTimeline()">▤ <span>Linha do tempo</span></button>
+      <button id="btnSuggestions" onclick="showSuggestions()">✧ <span>Sugestão</span></button>
     </nav>
   </aside>
 
@@ -56,6 +57,14 @@
         <input id="search" placeholder="Buscar por ação, título ou responsável..." oninput="render()">
       </div>
       <button class="primary" data-requires-permission="CARD_CRIAR" onclick="openForm()">＋ Novo Card</button>
+    </div>
+
+    <div class="suggestion-toolbar" id="suggestionToolbar" hidden>
+      <label class="suggestion-search">
+        <span aria-hidden="true">⌕</span>
+        <input id="suggestionSearch" type="search" placeholder="Buscar na sugestão..." oninput="renderSuggestions()">
+      </label>
+      <button class="primary" type="button" onclick="toggleSuggestionComposer()">＋ Nova sugestão</button>
     </div>
 
     <section class="board" id="board"></section>

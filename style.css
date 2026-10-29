@@ -387,6 +387,76 @@ button { cursor: pointer; }
 .my-action-row:hover { border-color: var(--primary); background: #eff6ff; }
 .my-action-row span, .my-action-row small { color: var(--muted); font-size: 11px; }
 
+.suggestion-toolbar { display: flex; align-items: center; gap: 12px; margin: -4px 0 16px; }
+.suggestion-toolbar[hidden] { display: none; }
+.suggestion-toolbar .primary { flex: 0 0 auto; }
+.suggestion-search { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; height: 42px; padding: 0 14px; border: 1px solid var(--line); border-radius: 9px; background: #fff; color: #94a3b8; box-shadow: var(--shadow); }
+.suggestion-search span { font-size: 23px; line-height: 1; }
+.suggestion-search input { width: 100%; border: 0; outline: 0; color: var(--text); font-size: 13px; }
+.suggestion-page { display: grid; gap: 18px; width: 100%; }
+.satisfaction-card, .suggestion-feed { min-width: 0; padding: 22px; border: 1px solid var(--line); border-radius: var(--radius); background: #fff; box-shadow: var(--shadow); }
+.satisfaction-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding-bottom: 18px; border-bottom: 1px solid #eef2f7; }
+.satisfaction-heading h2 { max-width: 720px; margin: 6px 0; font-size: 18px; letter-spacing: -.3px; }
+.satisfaction-heading p { margin: 0; color: var(--muted); font-size: 12px; }
+.satisfaction-response-total { flex: 0 0 auto; display: flex; align-items: baseline; gap: 6px; padding: 8px 11px; border-radius: 9px; background: #eff6ff; color: #1d4ed8; }
+.satisfaction-response-total strong { font-size: 18px; }
+.satisfaction-response-total span { font-size: 11px; }
+.satisfaction-content { display: grid; grid-template-columns: minmax(0, 1fr) 200px; gap: 28px; padding-top: 18px; }
+.satisfaction-score-picker { display: grid; grid-template-columns: repeat(11, minmax(27px, 1fr)); gap: 6px; }
+.satisfaction-score-picker button { min-width: 0; height: 36px; border: 1px solid #dbe3ee; border-radius: 7px; background: #fff; color: #475569; font-size: 12px; font-weight: 700; }
+.satisfaction-score-picker button:hover { border-color: var(--primary); background: #eff6ff; color: var(--primary); }
+.satisfaction-score-picker button.selected { border-color: var(--primary); background: var(--primary); color: #fff; box-shadow: 0 3px 8px #2563eb40; }
+.satisfaction-score-picker button:focus-visible, .suggestion-action:focus-visible, .suggestion-send-button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.satisfaction-score-labels { display: flex; justify-content: space-between; margin-top: 6px; color: var(--muted); font-size: 10px; }
+.satisfaction-submit-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 12px 0 18px; color: var(--muted); font-size: 11px; }
+.satisfaction-submit-row .primary:disabled { cursor: not-allowed; opacity: .5; }
+.satisfaction-distribution { display: grid; gap: 5px; }
+.satisfaction-distribution-row { display: grid; grid-template-columns: 16px minmax(0, 1fr) 22px; align-items: center; gap: 8px; color: #64748b; font-size: 10px; }
+.satisfaction-distribution-row small { text-align: right; color: var(--muted); font-size: 10px; }
+.satisfaction-bar-track { height: 7px; overflow: hidden; border-radius: 99px; background: #edf2f7; }
+.satisfaction-bar-track span { display: block; height: 100%; min-width: 0; border-radius: inherit; background: linear-gradient(90deg, #ef4444, #f59e0b 50%, #10b981); transition: width .25s ease; }
+.satisfaction-thermometer-panel { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; padding: 14px; border-radius: 12px; background: #f8fafc; }
+.satisfaction-thermometer-label { color: #475569; font-size: 11px; font-weight: 700; }
+.satisfaction-thermometer { position: relative; width: 42px; height: 148px; margin: 8px 0 4px; }
+.thermometer-tube { position: absolute; top: 0; left: 10px; width: 22px; height: 122px; overflow: hidden; border: 3px solid #cbd5e1; border-radius: 99px 99px 4px 4px; background: #fff; }
+.thermometer-fill { position: absolute; right: 0; bottom: 0; left: 0; border-radius: 0 0 4px 4px; background: linear-gradient(to top, #ef4444, #f59e0b 54%, #10b981); transition: height .35s ease; }
+.thermometer-tube strong { position: absolute; z-index: 1; top: 8px; left: 50%; transform: translateX(-50%); color: #334155; font-size: 9px; writing-mode: vertical-rl; }
+.thermometer-bulb { position: absolute; left: 3px; bottom: 0; width: 36px; height: 36px; overflow: hidden; border: 3px solid #cbd5e1; border-radius: 50%; background: #fff; }
+.thermometer-bulb span { position: absolute; right: 0; bottom: 0; left: 0; border-radius: 0 0 50% 50%; background: linear-gradient(to top, #ef4444, #10b981); }
+.thermometer-average { color: #0f172a; font-size: 17px; }
+.thermometer-caption { color: var(--muted); font-size: 10px; }
+.suggestion-feed { padding: 0 18px; }
+.suggestion-composer { padding: 16px 2px; border-bottom: 1px solid var(--line); }
+.suggestion-composer[hidden] { display: none; }
+.suggestion-composer label { display: block; margin-bottom: 8px; color: #334155; font-size: 12px; font-weight: 700; }
+.suggestion-composer textarea { display: block; width: 100%; min-height: 88px; padding: 11px 12px; resize: vertical; border: 1px solid var(--line); border-radius: 8px; outline: none; font-size: 13px; }
+.suggestion-composer textarea:focus, .suggestion-comment-form input:focus { border-color: var(--primary); box-shadow: 0 0 0 2px #2563eb1a; }
+.suggestion-composer-footer { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 10px; }
+.suggestion-composer-footer small { color: var(--muted); font-size: 10px; }
+.suggestion-feed-list { display: grid; }
+.suggestion-post { display: grid; grid-template-columns: 42px minmax(0, 1fr); gap: 12px; padding: 16px 2px; border-bottom: 1px solid #eef2f7; }
+.suggestion-post:last-child { border-bottom: 0; }
+.suggestion-avatar { display: grid; width: 40px; height: 40px; place-items: center; border-radius: 50%; background: linear-gradient(135deg, #6366f1, #8b5cf6); color: #fff; font-size: 12px; font-weight: 800; }
+.suggestion-post-meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; }
+.suggestion-post-meta strong, .suggestion-comment strong { color: #1e3a8a; font-size: 12px; }
+.suggestion-post-meta time, .suggestion-comment time { color: #94a3b8; font-size: 10px; }
+.suggestion-post-text { margin: 6px 0 10px; color: #334155; font-size: 13px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+.suggestion-post-actions { display: flex; align-items: center; gap: 14px; }
+.suggestion-action { display: inline-flex; align-items: center; gap: 5px; padding: 3px 5px; border: 0; border-radius: 5px; background: transparent; color: #64748b; font-size: 12px; }
+.suggestion-action:hover, .suggestion-action.liked { background: #eff6ff; color: #2563eb; }
+.suggestion-comment-count { color: #64748b; font-size: 11px; }
+.suggestion-comments { display: grid; gap: 7px; margin-top: 8px; }
+.suggestion-comment { padding: 8px 10px; border-radius: 8px; background: #f8fafc; }
+.suggestion-comment p { margin: 4px 0 0; color: #475569; font-size: 12px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.suggestion-comment-form { display: flex; gap: 7px; margin-top: 10px; }
+.suggestion-comment-form input { flex: 1; min-width: 0; height: 36px; padding: 0 11px; border: 1px solid var(--line); border-radius: 8px; outline: 0; font-size: 12px; }
+.suggestion-send-button { width: 38px; flex: 0 0 auto; border: 0; border-radius: 8px; background: var(--primary); color: #fff; font-size: 17px; }
+.suggestion-send-button:hover { background: var(--primary-hover); }
+.suggestion-empty-state { margin: 0; padding: 26px 12px; color: var(--muted); text-align: center; font-size: 13px; }
+.suggestion-error-state { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 36px 18px; border: 1px solid #fecaca; border-radius: var(--radius); background: #fff; color: #991b1b; text-align: center; }
+.suggestion-error-state strong { font-size: 15px; }
+.suggestion-error-state span { max-width: 620px; color: #64748b; font-size: 12px; overflow-wrap: anywhere; }
+
 .timeline-panel { width: 100%; min-width: 0; padding: 20px; background: #fff; border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
 .timeline-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
 .timeline-toolbar h2 { margin: 0; color: var(--text); font-size: 17px; letter-spacing: -.2px; }
@@ -638,4 +708,26 @@ button { cursor: pointer; }
   .detail-body { grid-template-columns: 1fr; padding: 22px 18px; gap: 24px; }
   .detail-right { border-left: 0; border-top: 1px solid #e2e8f0; padding: 24px 0 0; }
   .detail-left h2 { font-size: 22px; }
+
+  .suggestion-toolbar { align-items: stretch; }
+  .suggestion-toolbar .primary { padding: 9px 11px; font-size: 11px; }
+  .suggestion-search { padding: 0 10px; }
+  .satisfaction-card { padding: 16px; }
+  .satisfaction-heading h2 { font-size: 16px; }
+  .satisfaction-content { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+  .satisfaction-thermometer-panel { display: grid; grid-template-columns: 1fr auto auto; justify-items: start; gap: 8px; }
+  .satisfaction-thermometer-label { grid-column: 1 / -1; }
+  .satisfaction-thermometer { grid-row: span 2; margin: 0; transform: scale(.8); transform-origin: left center; }
+  .thermometer-average { align-self: end; }
+  .thermometer-caption { align-self: start; }
+  .suggestion-feed { padding: 0 12px; }
+}
+
+@media (max-width: 420px) {
+  .nav button { gap: 4px; font-size: 11px; }
+  .satisfaction-heading { flex-direction: column; }
+  .satisfaction-score-picker { gap: 3px; }
+  .satisfaction-score-picker button { height: 32px; font-size: 10px; }
+  .satisfaction-submit-row { align-items: flex-start; flex-direction: column; }
+  .suggestion-toolbar .primary { max-width: 120px; white-space: normal; }
 }

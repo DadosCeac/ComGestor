@@ -16,6 +16,7 @@ Este manual resume as mudanças recentes e indica onde investigar e corrigir pro
 - Identificação do usuário conectado para autoria e atualização do criador do card.
 - Sugestões de menção usando usuários ativos com acesso à organização, em descrições e comentários.
 - Lista de menções em **Minhas ações**, com contador e visualização em lista ou grade.
+- Espaço **Sugestão** com feed de ideias, curtidas, respostas e pesquisa de satisfação de 0 a 10. Cada pessoa pode atualizar sua própria nota; o painel exibe apenas a média e a distribuição agregadas da organização.
 - Menções permanecem até a conclusão: as ligadas a uma ação saem quando ela é concluída; as demais saem quando o card é concluído ou todas as suas ações são concluídas. Abrir o card não as dispensa.
 - Ao abrir um card em **A Fazer**, ele muda para **Em Andamento**, respeitando o limite configurado na área.
 - Ao concluir todas as ações, o card muda para **Concluídos**. Adicionar uma ação ou reabrir uma ação em um card concluído retorna o card para **Em Andamento**.
@@ -26,12 +27,14 @@ Este manual resume as mudanças recentes e indica onde investigar e corrigir pro
 
 | Arquivo                                                                    | O que mantém                                                                                                                                                            |
 | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| [script.js](./script.js)                                                    | Interface principal, menções, “Minhas ações”, transições de status e carregamento da sessão.                                                                    |
-| [index.html](./index.html) e [style.css](./style.css)                        | Estrutura e aparência do quadro, modais e visualização das ações.                                                                                                   |
+| [script.js](./script.js)                                                    | Interface principal, menções, “Minhas ações”, sugestões, pesquisa de satisfação, transições de status e carregamento da sessão.                                                                    |
+| [index.html](./index.html) e [style.css](./style.css)                        | Estrutura e aparência do quadro, feed de sugestões, termômetro, modais e visualização das ações.                                                                                                   |
 | [login.html](./login.html), [login.js](./login.js) e [login.css](./login.css) | Tela, autenticação e mensagens de erro do login.                                                                                                                       |
 | [comgestor-client.js](./comgestor-client.js)                                | Chamadas do navegador ao backend Convex e token de sessão.                                                                                                              |
 | [convex/lib/acesso.ts](./convex/lib/acesso.ts)                              | Validação do login, e-mail, usuário ativo e permissões no backend.                                                                                                   |
 | [convex/usuarios.ts](./convex/usuarios.ts)                                  | Dados de sessão e usuários disponíveis para menção/compartilhamento.                                                                                                |
+| [convex/sugestoes.ts](./convex/sugestoes.ts)                                | Sugestões da organização, comentários, curtidas e respostas agregadas da pesquisa de satisfação. |
+| [convex/sugestoes.test.ts](./convex/sugestoes.test.ts)                      | Testes de colaboração no feed, agregação de notas e isolamento entre organizações. |
 | [convex/seedData.ts](./convex/seedData.ts)                                  | Lista de usuários autorizados, e-mail, área, perfil e estado ativo esperado.                                                                                           |
 | [convex/seed.ts](./convex/seed.ts)                                          | Carga inicial e sincronização de usuários já existentes. Em execuções posteriores sincroniza o status ativo, mas preserva perfil e área dos usuários existentes. |
 | [convex/acesso.test.ts](./convex/acesso.test.ts)                            | Testes de autorização, sessão e sincronização do estado ativo.                                                                                                      |
